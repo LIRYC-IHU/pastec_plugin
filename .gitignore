@@ -1,0 +1,4 @@
+node_modules/
+dist/
+downloaded_files/
+.DS_Store

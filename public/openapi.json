@@ -1,0 +1,864 @@
+{
+    "openapi": "3.0.2",
+    "info": {
+        "title": "FastAPI",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/api/connect/keycloak": {
+            "post": {
+                "summary": "Identification With Keycloak",
+                "operationId": "identification_with_keycloak_api_connect_keycloak_post",
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_identification_with_keycloak_api_connect_keycloak_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/IdentificationWithKeycloak"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/upload/episode_info": {
+            "post": {
+                "summary": "Upload Episode Info",
+                "operationId": "upload_episode_info_api_upload_episode_info_post",
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_upload_episode_info_api_upload_episode_info_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UploadEpisodeInfo"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/upload/egm": {
+            "post": {
+                "summary": "Upload File",
+                "operationId": "upload_file_api_upload_egm_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_upload_file_api_upload_egm_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/process/egm": {
+            "post": {
+                "summary": "Execute Ia Manually",
+                "operationId": "execute_ia_manually_api_process_egm_post",
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_execute_ia_manually_api_process_egm_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SuccessResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/user/annotations/new": {
+            "post": {
+                "summary": "Save User Annotations",
+                "operationId": "save_user_annotations_api_user_annotations_new_post",
+                "parameters": [
+                    {
+                        "required": false,
+                        "schema": {
+                            "title": "Alert",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "name": "alert",
+                        "in": "query"
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_save_user_annotations_api_user_annotations_new_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Annotation"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/user/annotation/get": {
+            "get": {
+                "summary": "Get User Annotations",
+                "operationId": "get_user_annotations_api_user_annotation_get_get",
+                "parameters": [
+                    {
+                        "required": true,
+                        "schema": {
+                            "title": "System",
+                            "type": "string"
+                        },
+                        "name": "system",
+                        "in": "query"
+                    },
+                    {
+                        "required": true,
+                        "schema": {
+                            "title": "Patientid",
+                            "type": "string"
+                        },
+                        "name": "patientId",
+                        "in": "query"
+                    },
+                    {
+                        "required": true,
+                        "schema": {
+                            "title": "Episodeid",
+                            "type": "string"
+                        },
+                        "name": "episodeID",
+                        "in": "query"
+                    },
+                    {
+                        "required": false,
+                        "schema": {
+                            "title": "Alert",
+                            "type": "boolean",
+                            "default": false
+                        },
+                        "name": "alert",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AnnotationsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/informations/patients_with_alert": {
+            "get": {
+                "summary": "Get Patients With Alert",
+                "operationId": "get_patients_with_alert_api_informations_patients_with_alert_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PatientResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/informations/jobs/pending": {
+            "get": {
+                "summary": "List Jobs Pending",
+                "operationId": "list_jobs_pending_api_informations_jobs_pending_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Jobs"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/informations/check_job/{job_id}": {
+            "get": {
+                "summary": "Check Job",
+                "operationId": "check_job_api_informations_check_job__job_id__get",
+                "parameters": [
+                    {
+                        "required": true,
+                        "schema": {
+                            "title": "Job Id",
+                            "type": "string"
+                        },
+                        "name": "job_id",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CheckJob"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        },
+        "/api/informations/get_file/{file_id}": {
+            "get": {
+                "summary": "Get File",
+                "operationId": "get_file_api_informations_get_file__file_id__get",
+                "parameters": [
+                    {
+                        "required": true,
+                        "schema": {
+                            "title": "File Id",
+                            "type": "string"
+                        },
+                        "name": "file_id",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Annotation": {
+                "title": "Annotation",
+                "required": [
+                    "annotation",
+                    "timestamp",
+                    "userID",
+                    "userLevel"
+                ],
+                "type": "object",
+                "properties": {
+                    "annotation": {
+                        "title": "Annotation",
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "title": "Timestamp",
+                        "type": "string"
+                    },
+                    "userID": {
+                        "title": "Userid",
+                        "type": "string"
+                    },
+                    "userLevel": {
+                        "title": "Userlevel",
+                        "type": "string"
+                    }
+                }
+            },
+            "AnnotationsResponse": {
+                "title": "AnnotationsResponse",
+                "required": [
+                    "annotations"
+                ],
+                "type": "object",
+                "properties": {
+                    "annotations": {
+                        "title": "Annotations",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Annotation"
+                        }
+                    }
+                }
+            },
+            "Body_execute_ia_manually_api_process_egm_post": {
+                "title": "Body_execute_ia_manually_api_process_egm_post",
+                "required": [
+                    "system",
+                    "patientId",
+                    "episodeId"
+                ],
+                "type": "object",
+                "properties": {
+                    "system": {
+                        "title": "System",
+                        "type": "string"
+                    },
+                    "patientId": {
+                        "title": "Patientid",
+                        "type": "integer"
+                    },
+                    "episodeId": {
+                        "title": "Episodeid",
+                        "type": "integer"
+                    }
+                }
+            },
+            "Body_identification_with_keycloak_api_connect_keycloak_post": {
+                "title": "Body_identification_with_keycloak_api_connect_keycloak_post",
+                "required": [
+                    "username",
+                    "password"
+                ],
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "title": "Username",
+                        "type": "string"
+                    },
+                    "password": {
+                        "title": "Password",
+                        "type": "string"
+                    }
+                }
+            },
+            "Body_save_user_annotations_api_user_annotations_new_post": {
+                "title": "Body_save_user_annotations_api_user_annotations_new_post",
+                "required": [
+                    "system",
+                    "patientId",
+                    "episodeId",
+                    "diagnosis"
+                ],
+                "type": "object",
+                "properties": {
+                    "system": {
+                        "title": "System",
+                        "type": "string"
+                    },
+                    "patientId": {
+                        "title": "Patientid",
+                        "type": "string"
+                    },
+                    "episodeId": {
+                        "title": "Episodeid",
+                        "type": "string"
+                    },
+                    "diagnosis": {
+                        "title": "Diagnosis",
+                        "type": "string"
+                    }
+                }
+            },
+            "Body_upload_episode_info_api_upload_episode_info_post": {
+                "title": "Body_upload_episode_info_api_upload_episode_info_post",
+                "required": [
+                    "system",
+                    "patientId",
+                    "episodeId",
+                    "eventType"
+                ],
+                "type": "object",
+                "properties": {
+                    "system": {
+                        "title": "System",
+                        "type": "string"
+                    },
+                    "patientId": {
+                        "title": "Patientid",
+                        "type": "integer"
+                    },
+                    "episodeId": {
+                        "title": "Episodeid",
+                        "type": "integer"
+                    },
+                    "eventType": {
+                        "title": "Eventtype",
+                        "type": "string"
+                    }
+                }
+            },
+            "Body_upload_file_api_upload_egm_post": {
+                "title": "Body_upload_file_api_upload_egm_post",
+                "required": [
+                    "system",
+                    "patientId",
+                    "episodeId",
+                    "episodeType",
+                    "EGM"
+                ],
+                "type": "object",
+                "properties": {
+                    "system": {
+                        "title": "System",
+                        "type": "string"
+                    },
+                    "patientId": {
+                        "title": "Patientid",
+                        "type": "integer"
+                    },
+                    "episodeId": {
+                        "title": "Episodeid",
+                        "type": "integer"
+                    },
+                    "episodeType": {
+                        "title": "Episodetype",
+                        "type": "string"
+                    },
+                    "EGM": {
+                        "title": "Egm",
+                        "type": "string",
+                        "format": "binary"
+                    }
+                }
+            },
+            "CheckJob": {
+                "title": "CheckJob",
+                "required": [
+                    "job_id",
+                    "result",
+                    "task_status"
+                ],
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "title": "Job Id",
+                        "type": "string"
+                    },
+                    "result": {
+                        "title": "Result",
+                        "type": "string"
+                    },
+                    "task_status": {
+                        "title": "Task Status",
+                        "type": "string"
+                    }
+                }
+            },
+            "HTTPValidationError": {
+                "title": "HTTPValidationError",
+                "type": "object",
+                "properties": {
+                    "detail": {
+                        "title": "Detail",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        }
+                    }
+                }
+            },
+            "IdentificationWithKeycloak": {
+                "title": "IdentificationWithKeycloak",
+                "required": [
+                    "access_token",
+                    "expires_in",
+                    "refresh_expires_in",
+                    "refresh_token",
+                    "session_state",
+                    "scope"
+                ],
+                "type": "object",
+                "properties": {
+                    "access_token": {
+                        "title": "Access Token",
+                        "type": "string"
+                    },
+                    "expires_in": {
+                        "title": "Expires In",
+                        "type": "integer"
+                    },
+                    "refresh_expires_in": {
+                        "title": "Refresh Expires In",
+                        "type": "integer"
+                    },
+                    "refresh_token": {
+                        "title": "Refresh Token",
+                        "type": "string"
+                    },
+                    "token_type": {
+                        "title": "Token Type",
+                        "type": "string",
+                        "default": "Bearer"
+                    },
+                    "not_before_policy": {
+                        "title": "Not Before Policy",
+                        "type": "integer"
+                    },
+                    "session_state": {
+                        "title": "Session State",
+                        "type": "string"
+                    },
+                    "scope": {
+                        "title": "Scope",
+                        "type": "string"
+                    }
+                }
+            },
+            "Job": {
+                "title": "Job",
+                "required": [
+                    "job_id",
+                    "system",
+                    "event",
+                    "timestamp"
+                ],
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "title": "Job Id",
+                        "type": "string"
+                    },
+                    "system": {
+                        "title": "System",
+                        "type": "string"
+                    },
+                    "event": {
+                        "title": "Event",
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "title": "Timestamp",
+                        "type": "string"
+                    }
+                }
+            },
+            "Jobs": {
+                "title": "Jobs",
+                "type": "array",
+                "items": {
+                    "$ref": "#/components/schemas/Job"
+                }
+            },
+            "Patient": {
+                "title": "Patient",
+                "required": [
+                    "patientId",
+                    "episodeID",
+                    "diagnosis",
+                    "system",
+                    "userID",
+                    "userLevel",
+                    "timestamp"
+                ],
+                "type": "object",
+                "properties": {
+                    "patientId": {
+                        "title": "Patientid",
+                        "type": "string"
+                    },
+                    "episodeID": {
+                        "title": "Episodeid",
+                        "type": "string"
+                    },
+                    "diagnosis": {
+                        "title": "Diagnosis",
+                        "type": "string"
+                    },
+                    "system": {
+                        "title": "System",
+                        "type": "string"
+                    },
+                    "userID": {
+                        "title": "Userid",
+                        "type": "string"
+                    },
+                    "userLevel": {
+                        "title": "Userlevel",
+                        "type": "string"
+                    },
+                    "alert": {
+                        "title": "Alert",
+                        "type": "boolean",
+                        "default": false
+                    },
+                    "timestamp": {
+                        "title": "Timestamp",
+                        "type": "string"
+                    }
+                }
+            },
+            "PatientResponse": {
+                "title": "PatientResponse",
+                "required": [
+                    "patients"
+                ],
+                "type": "object",
+                "properties": {
+                    "patients": {
+                        "title": "Patients",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Patient"
+                        }
+                    }
+                }
+            },
+            "SuccessResponse": {
+                "title": "SuccessResponse",
+                "type": "string"
+            },
+            "UploadEpisodeInfo": {
+                "title": "UploadEpisodeInfo",
+                "required": [
+                    "choices",
+                    "Need_EGM"
+                ],
+                "type": "object",
+                "properties": {
+                    "choices": {
+                        "title": "Choices",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "Need_EGM": {
+                        "title": "Need Egm",
+                        "type": "boolean"
+                    },
+                    "AI_available": {
+                        "title": "Ai Available",
+                        "type": "boolean",
+                        "default": false
+                    }
+                }
+            },
+            "ValidationError": {
+                "title": "ValidationError",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "type": "object",
+                "properties": {
+                    "loc": {
+                        "title": "Location",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "msg": {
+                        "title": "Message",
+                        "type": "string"
+                    },
+                    "type": {
+                        "title": "Error Type",
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "Bearer": {
+                "type": "oauth2",
+                "description": "OAuth2 password flow",
+                "flows": {
+                    "password": {
+                        "scopes": {},
+                        "tokenUrl": "http://keycloak:8080/realms/egmApp/protocol/openid-connect/token"
+                    }
+                }
+            }
+        }
+    }
+}

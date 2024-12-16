@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Identification - EGM Download and Annotation Plugin</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+    <div id="identification-field">
+        <h1>Identification utilisateur</h1>
+        <p></p><p></p>
+        <label for="username">Nom d'utilisateur</label>
+        <p></p>
+        <input type="text" id="username" class="text-field" name="username"/>
+        <p></p><p></p>
+        <label for="password">Mot de passe</label>
+        <p></p>
+        <input type="password" id="password" class="text-field" name="password"/>
+        <p></p>
+    </div>
+    <div id="submit">
+        <button id="submit-button" class="label-button">Soumettre</button>
+        <p id="auth-success" style= "display:none">Authentification réussie</p>
+        <p id="auth-failure" style="display:none">Erreur: mot de passe et/ou identifiant incorrect(s)</p>
+    </div>
+</body>
+<script src="options.js"></script>
+</html>
+

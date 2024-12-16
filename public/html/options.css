@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+
+:root{
+    box-sizing: border-box;
+
+    --deep-red: rgb(251, 55, 57);
+    --clear-green: rgb(81, 186, 88);
+    --hover-green: rgb(61, 166, 68);
+
+    --main-font: 'Montserrat', sans-serif;
+
+    --font-light: 200;
+    --font-medium: 300;
+    --font-bold: 600;
+
+    font-size: 16px;
+    font-family: var(--main-font);
+}
+
+body{
+    font-family: var(--main-font);
+    background-color: whitesmoke;
+    color: black;
+    text-align: center;
+    font-size: 1rem;
+    padding: auto;
+}
+
+.label-button{
+    font-family: var(--main-font);
+    text-shadow: none;
+    background: none;
+    background-image: none;
+    align-items: center;
+    display: flex; 
+    font-family: var(--main-font); 
+    color: grey; 
+    font-size: 0.9rem;
+    font-weight: var(--font-medium); 
+    height: 2rem; 
+    width: 40%; ;
+    justify-content: space-evenly; 
+    background-color: whitesmoke;
+    border: 1px solid grey;
+    border-radius: 0.5rem;
+    padding: 1rem 1rem;
+    margin: 0 auto; /* Ajouté pour centrer les boutons */
+}
+
+.label-button:hover{
+    transition: all 0.3s ease;
+    transform: translateY(-0.1rem);
+    align-items: center;
+    background: none;
+    background-image: none;
+    background-color: var(--hover-green);
+    border-radius: .5rem;
+    box-shadow: inset;
+    color: whitesmoke;
+}
+
+.text-field{
+    font-size : 1.5rem;
+    width: 20%;
+}
+
+.popup-button{
+    width: 100%;
+    font-size: 0.8rem;
+}
+
+#view{
+    padding: 0.5rem 3rem;
+}

@@ -1,0 +1,228 @@
+@import url('https://fonts.googleapis.com/css?family=Lato:400,500,600,700&display=swap');
+
+:root{
+
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+
+    --deep-blue: #001b48;
+    --clear-blue: #97cad8;
+    --hover-blue: #018abe;
+
+    --main-font: 'Lato', sans-serif;
+
+    --font-light: 200;
+    --font-medium: 300;
+    --font-bold: 600;
+
+    font-size: "16px";
+    font-family: var(--main-font);
+}
+
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: var(--main-font);
+}
+
+#pdf-viewer {
+    position: fixed; /* Keeps the popup in a fixed position on the screen */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%; /* 90% of the viewport width */
+    height: 90%; /* 90% of the viewport height */
+    display: flex;
+    flex-direction: row; /* Or row, if you prefer elements side by side */
+    justify-content: flex-start;
+    align-items: stretch;
+    align-content: stretch;
+    background-color: var(--deep-blue);
+    color: white;
+    overflow: auto; /* Adds scroll to the popup if content exceeds its size */
+    box-sizing: border-box;
+    z-index: 99999;
+}
+
+#viewer {
+    padding: 2rem 2rem;
+    width: 70%;
+    height: 100%;
+ /* Adds some space between the viewer and diagnostic */
+}
+
+.diagnostic-spacer {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+}
+
+#popup-diagnostic{
+  display:flex;
+  flex-direction: column;
+  width: 30%;  
+  padding: 2rem 1rem;
+}
+
+#alert-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+
+}
+
+#close-container {
+  display: flex;
+  position: absolute;
+  justify-content: flex-start;
+  top: 10px;
+  right: 10px;
+}
+
+.diagnostic-spacer {
+    display: flex;
+    flex-grow: 1;
+    justify-content: space-between;
+}
+
+.popup-label-buttons {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    /* Adjust margins as needed */
+}
+
+#skip-container{
+  display:flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+.title {
+    color: whitesmoke;
+    margin-block-end: .5rem;
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    border-left: .5rem solid var(--clear-blue);
+    font-weight: var(--font-medium);
+    text-align: left;
+    letter-spacing: 0.1rem;
+}
+
+.label-button, .nav-button, .skip-button{
+    font-family: var(--main-font);
+    color: #808080;
+    font-size: 1rem;
+    display: inline-flex;
+    height: 2rem;
+    width: 80%;
+    align-items: center;
+    justify-content: space-evenly;
+    background-color: white;
+    border: none;
+    border-radius: 0.5rem;
+    margin-block: 2%;
+}
+
+.skip-button{
+  margin-block: 1rem 2rem;
+}
+
+
+.label-button:hover, .nav-button:hover, .skip-button:hover{
+    transition: all 0.3s ease;
+    transform: translateY(-0.1rem);
+    background-color: var(--hover-blue);
+    border-radius: 0.5rem;
+    box-shadow: inset;
+    color: white;
+}
+
+.wrapper{
+    font-family: var(--main-font);
+    font-size: 0.5rem;
+    display: flex;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+  .wrapper .option{
+    background: #fff;
+    height: 2rem;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+    margin: 0 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    padding: 0px 15px;
+    border: 2px solid lightgrey;
+    transition: all 0.3s ease;
+  }
+  .wrapper .option .dot{
+    height: 20px;
+    width: 20px;
+    margin-right: .5rem;
+    background: #d9d9d9;
+    border-radius: 50%;
+    position: relative;
+  }
+
+  input[type="radio"]{
+    display: none;
+  }
+  #option-1:checked:checked ~ .option-1,
+  #option-2:checked:checked ~ .option-2{
+    border-color: var(--hover-blue);
+    background: var(--hover-blue);
+  }
+  #option-1:checked:checked ~ .option-1 .dot,
+  #option-2:checked:checked ~ .option-2 .dot{
+    background: #fff;
+  }
+  #option-1:checked:checked ~ .option-1 .dot::before,
+  #option-2:checked:checked ~ .option-2 .dot::before{
+    opacity: 1;
+    transform: scale(1);
+  }
+  .wrapper .option span{
+    font-size: 1rem;
+    color: #808080;
+  }
+  #option-1:checked:checked ~ .option-1 span,
+  #option-2:checked:checked ~ .option-2 span{
+    color: #fff;
+  }
+
+.gg-close-o {
+    display: flex;
+    cursor: pointer;
+    transform: scale(var(--ggs,1));
+    width: 22px;
+    height: 22px;
+}
+.gg-close-o::after,
+.gg-close-o::before {
+    content: "";
+    display: flex;
+    box-sizing: border-box;
+    position: absolute;
+    width: 12px;
+    height: 2px;
+    background: currentColor;
+    transform: rotate(45deg);
+    border-radius: 5px;
+    top: 7.75px;
+    left: 3px;
+}
+.gg-close-o::after {
+    transform: rotate(-45deg)
+}

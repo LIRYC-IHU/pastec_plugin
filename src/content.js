@@ -1,5 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
 import * as moment from 'moment';
+import { authenticatedFetch } from "./auth";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.js');
 
@@ -25,38 +26,34 @@ export async function extractTextByPage(PDFDocumentLoadingTask) {
 
 export async function fetchPdfAsBlob(url) {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Impossible de charger le PDF : ${response.statusText}`);
     return await response.blob();
 }
 
-// Dans content.js
-export async function injectGenericHTML(htmlname) {
+export async function injectGenericHTML(containerId) {
     try {
         // Vérifier si le conteneur existe déjà
-        let container = document.getElementById(htmlname);
+        let container = document.getElementById(containerId);
         
         // Si le conteneur n'existe pas, le créer
         if (!container) {
-            const response = await fetch(chrome.runtime.getURL(`html/${htmlname}.html`));
-            const data = await response.text();
-            const div = document.createElement('div');
-            div.innerHTML = data;
-            document.body.insertBefore(div, document.body.firstChild);
-            addListenersToPopup(htmlname);
-        } else {
-            // Si le conteneur existe, nettoyer son contenu
-            const response = await fetch(chrome.runtime.getURL(`html/${htmlname}.html`));
-            const data = await response.text();
-            container.innerHTML = data;
-            addListenersToPopup(htmlname);
+            container = document.createElement('div');
+            container.id = containerId;
+            document.body.appendChild(container);
         }
+
+        // Charger et injecter le HTML
+        const response = await fetch(chrome.runtime.getURL(`html/${containerId}.html`));
+        const data = await response.text();
+        container.innerHTML = data;
+
+        console.log(`Container ${containerId} created/updated successfully`);
+        return container;
     } catch (err) {
-        console.error('Error fetching the HTML file:', err);
-        throw err;
+        console.error('Error in injectGenericHTML:', err);
+        throw new Error(`Failed to inject HTML: ${err.message}`);
     }
 }
 
-// Ajouter une fonction pour nettoyer le conteneur
 export function resetOverlayContainer() {
     const container = document.getElementById('overlay-container');
     if (container) {
@@ -64,7 +61,20 @@ export function resetOverlayContainer() {
     }
 }
 
-
+export async function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            // Extraire la partie base64 de la Data URL
+            const base64data = reader.result.split(',')[1];
+            resolve(base64data);
+        };
+        reader.onerror = () => {
+            reject(new Error("Erreur lors de la conversion du blob en base64."));
+        };
+        reader.readAsDataURL(blob);
+    });
+}
 
 export function base64ToBlob(base64, type = 'application/pdf') {
     // Séparer la chaîne base64 du préfixe Data URL, s'il existe
@@ -102,7 +112,7 @@ export async function uint8ArrayToBase64(uint8Array) {
     });
 }
 
-export async function processViewerEpisode(metadata, choices, jobs, auth_token, isAnnotated) {
+export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) {
     const pdf_viewer = document.querySelector(".popup-label-buttons");
     if (!pdf_viewer) {
         console.error("Popup container not found.");
@@ -113,20 +123,18 @@ export async function processViewerEpisode(metadata, choices, jobs, auth_token, 
     const aiSelector = document.querySelector(".ai-field-value");
 
     if (jobs) {
-        
 
         const fetchJobData = async (job) => {
-            const response = await fetch(`http://localhost:8000/ai/jobs?job_id=${job}`, {
-                method: "GET",
-                headers: {
-                "Authorization": `Bearer ${auth_token}`,
-                "Content-Type": "application/json"
-                }
-            });
-            if (response.ok) {
+            try {
+                const response = await authenticatedFetch(`http://localhost:8000/ai/jobs?job_id=${job}`, {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                });
                 return await response.json();
-            } else {
-                console.error("Failed to fetch job data");
+            } catch (error) {
+                console.error("Failed to fetch job data:", error);
                 return null;
             }
         };
@@ -164,9 +172,11 @@ export async function processViewerEpisode(metadata, choices, jobs, auth_token, 
         aiSelector.appendChild(noJobElement);
     }
 
+    addListenersToPopup("overlay-container");
+
     return new Promise((resolve, reject) => {
-        console.log("Diagnostic choices:", choices);
-        choices.forEach((diag, index) => {
+        console.log("Diagnostic choices:", labels);
+        labels.forEach((diag, index) => {
             const labelButton = document.createElement('button');
             labelButton.className = "label-button";
             labelButton.textContent = `${index + 1} - ${diag}`;
@@ -184,11 +194,10 @@ export async function processViewerEpisode(metadata, choices, jobs, auth_token, 
                     console.log("Sending annotation for episode:", metadata.episodeId);
                     console.log("Label:", diag);
 
-                    const response = await fetch(`http://127.0.0.1:8000/episode/${metadata.episodeId}/annotation`, {
+                    const response = await authenticatedFetch(`http://127.0.0.1:8000/episode/${metadata.episodeId}/annotation`, {
                         method: 'PUT',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
+                            'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
                             label: diag
@@ -268,91 +277,6 @@ export async function processViewerEpisode(metadata, choices, jobs, auth_token, 
                 buttons[buttonIndex].click();
             }
         };
-    });
-}
-
-export async function processViewerEpisode_old(data, choices, isAnnotated, blobUrl) {
-    const pdf_viewer = document.querySelector(".popup-label-buttons");
-    if (!pdf_viewer) {
-        console.error("Popup container not found.");
-        throw new Error("Popup container not found.");
-    }
-
-    console.log("data is", data);
-
-    // Returns a promise that resolves when a button is clicked
-    return new Promise((resolve, reject) => {
-        console.log("Diagnostic choices:", choices);
-        choices.forEach((diag, index) => {
-            const labelButton = document.createElement('button');
-            labelButton.className = "label-button";
-            labelButton.textContent = `${index + 1} - ${diag}`;
-            pdf_viewer.appendChild(labelButton);
-
-            labelButton.addEventListener('click', async() => {
-                const diagnosis = await chrome.runtime.sendMessage({
-                    action: "get episode diagnosis",
-                    metadata: data
-                })
-
-                console.log("diagnosis: ", diagnosis);
-
-                if (diagnosis.response) {
-                    // doesn't handle the case where the EGM is uploaded but passed, get diagnosis not functional
-                    if (window.confirm(`L'épisode en cours d'analyse est déjà annoté sur la base de données (diagnostic: ${diagnosis.response}); voulez-vous écraser le résultat?`)) {
-                        await processDiagnosis(diag, data);
-                        resolve(data); // Resolve the promise with updated data
-                    } else resolve(data);
-                } else {
-                    await processDiagnosis(diag, data);
-                    resolve(data); // Resolve the promise with updated data
-                }
-                cleanAllButtons();
-                document.querySelector("#option-1").checked = false;
-                document.querySelector("#option-2").checked = true;
-            });
-        });
-
-        const skipButton = document.querySelector("#skip");
-        skipButton.addEventListener('click', () => { 
-            console.log("skip button clicked");
-            cleanAllButtons();
-            document.querySelector("#option-1").checked = false;
-            document.querySelector("#option-2").checked = true;
-            resolve(data);
-        })
-
-        async function processDiagnosis(diagnosis, data) {
-            console.log("Processing diagnosis: " + diagnosis);
-            data.diagnosis = diagnosis;
-            data.isAlert = document.querySelector("#option-1").checked;
-            console.log("Alert status:", data.isAlert);
-            if(data.isAlert) {
-                if(data.system === "Biotronik") document.querySelector("#DisplayEpisode\\:printButton").click();
-                else {
-                    data.episodeLink = await getEpisodeLink(data.system, blobUrl);
-                    console.log("data before sending background alert printing", data);
-                    chrome.runtime.sendMessage({
-                        action: "handle alert printing",
-                        message: data
-                    });
-                }
-            }
-        }
-            // Clés du de numéro (les codes de touche peuvent varier selon les navigateurs et les claviers)
-    const key_map = [49, 50, 51, 52, 53, 54, 55, 56, 57, 58];
-
-    // Gestionnaire pour les touches du clavier
-    document.onkeydown = (e) => {
-        let keyCode = e.keyCode;
-        const buttons = document.querySelectorAll(".label-button");
-        const buttonIndex = key_map.indexOf(keyCode); 
-        console.log(buttonIndex);// -1 si votre tableau commence à 0
-        if (buttonIndex >= 0 && buttonIndex < buttons.length) {
-            // Simuler un clic sur le bouton correspondant
-            buttons[buttonIndex].click();
-        }
-    };
     });
 }
 
@@ -436,9 +360,9 @@ function addListenersToPopup(htmlname) {
 
     close.addEventListener('click', () => {
         console.log("close button clicked");
-        //create a custom event to close the popup
-        const event = new CustomEvent('closePopup', {detail: {htmlname}});
-        document.dispatchEvent(event);
+        //créer un custom event "close overlay"
+        const closeEvent = new CustomEvent("close_overlay");
+        document.dispatchEvent(closeEvent);
     })
 
     document.body.onkeydown = function (e) {
@@ -454,16 +378,10 @@ function addListenersToPopup(htmlname) {
     };
 }
 
-export async function loadJsonFile(system) { 
-    try {
-      const response = await fetch(chrome.runtime.getURL('diagnosis-maps.json'));
-      const data = await response.json();
-      return data[system];
-    } catch (error) {
-      console.error("Erreur de chargement du fichier JSON :", error);
-      return null;
-    }
-  }
+export async function loadJsonFile(url) { 
+    const response = await fetch(url);
+    return await response.json();
+}
 
 export function convertDurationToSeconds(duration, system) {
     let hours = 0, minutes = 0,  seconds = 0;
@@ -565,22 +483,22 @@ export function openMailto(email) {
 
 // functions handling messages to background for API calls
 
-export async function encryptPatientData(metadata) {
+export async function encryptPatientData(data) {
     const encryptResponse = await chrome.runtime.sendMessage({
         action: "encrypt patient data",
-        episode_info: {episodeDate: metadata.episodeDate, patientName: metadata.patientName, implantSerial: metadata.implantSerial}
+        episode_info: {episodeDate: data.episodeDate, patientName: data.patientName, implantSerial: data.implantSerial}
     });
 
-    metadata.patientId = encryptResponse.patientId;
-    metadata.episodeId = encryptResponse.episodeId;
+    data.patientId = encryptResponse.patientId;
+    data.episodeId = encryptResponse.episodeId;
 }
 
-export async function getEpisodeInformation(metadata) {
-    console.log("metadata in function", metadata);
+export async function getEpisodeInformation(episodeId) {
+    console.log("metadata in function", episodeId);
     try {
         const episodeInformation = await chrome.runtime.sendMessage({
             action: "get episode information",
-            metadata: metadata
+            metadata: episodeId
         });
     
         return [ episodeInformation.response.choices, !episodeInformation.response.Need_EGM ];
@@ -589,10 +507,10 @@ export async function getEpisodeInformation(metadata) {
     }
 }
 
-export async function sendDataToBackground(dataObject) {
+export async function sendDataToBackground(data) {
     return await chrome.runtime.sendMessage({
         action: "send dataObject to background",
-        dataObject: dataObject
+        dataObject: data
     });
 }
 
@@ -617,12 +535,6 @@ async function getEpisodeLink(system, blobUrl) {
     }
 }
 
-
-
-
-
-
-
 export async function addDiagnosisToEpisode(episodeId, label) {
     try {
         const response = await authenticatedFetch(`http://127.0.0.1:8000/episodes/${encodeURIComponent(episodeId)}/label?label=${encodeURIComponent(label)}`, {
@@ -644,25 +556,8 @@ export async function addDiagnosisToEpisode(episodeId, label) {
     }
 }
 
-export function calculateAgeInSeconds(birthDateStr, episodeDateStr) {
-    try {
-        // Configurer moment pour la localisation française
-        moment.locale('fr');
-
-        // Parser les dates avec le format spécifique en français
-        const birthDate = moment(birthDateStr, 'D MMMM YYYY');  
-        const episodeDate = moment(episodeDateStr, 'D MMMM YYYY');
-
-        // Vérifier si les dates sont valides
-        if (!birthDate.isValid() || !episodeDate.isValid()) {
-            throw new Error("Format de date invalide");
-        }
-
-        // Calculer la différence en secondes
-        const ageInSeconds = episodeDate.diff(birthDate, 'seconds');
-        return ageInSeconds;
-    } catch (error) {
-        console.error("Erreur lors du calcul de l'âge en secondes:", error);
-        return 0;  // Valeur par défaut en cas d'erreur
-    }
+export async function calculateAgeInSeconds(birthdate) {
+    const birthDateObj = new Date(birthdate);
+    const now = new Date();
+    return Math.floor((now - birthDateObj) / 1000);
 }

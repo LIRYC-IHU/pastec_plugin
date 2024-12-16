@@ -9,8 +9,8 @@ const path = require('path');
 module.exports = {
   entry: {
     content: './src/content.js',
-    auth: './src/auth.js',
     data_formatting: './src/data_formatting.js',
+    auth: './src/auth.js',
     microport_scraping: './src/microport_scraping.js',
     medtronic_scraping: './src/medtronic_scraping.js',
     biotronik_scraping: './src/biotronik_scraping.js',

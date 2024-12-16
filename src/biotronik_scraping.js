@@ -1,6 +1,4 @@
-import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, encryptPatientData, getEpisodeInformation, sendDataToBackground, convertDurationToSeconds, loadJsonFile } from "./content";
-
-import { blobToBase64 } from "./data_formatting";
+import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, blobToBase64, encryptPatientData, getEpisodeInformation, sendDataToBackground, convertDurationToSeconds, loadJsonFile } from "./content";
 
 console.log("biotronik_scraping.js script initialized");
 const diagnoses = await loadJsonFile('Biotronik');

@@ -13,19 +13,57 @@ export function blobToBase64(blob) {
     });
 }
 
-export function formatAgeAtEpisode(episode_date, date_of_birth) {
+export function ageAtEpisode(episode_date, date_of_birth) {
+    // Fonction pour convertir une date en format français en objet Date
+    function parseFrenchDate(dateStr, defaultTime = "00:00") {
+        const months = {
+            "janv.": "Jan",
+            "févr.": "Feb",
+            "mars": "Mar",
+            "avr.": "Apr",
+            "mai": "May",
+            "juin": "Jun",
+            "juil.": "Jul",
+            "août": "Aug",
+            "sept.": "Sep",
+            "oct.": "Oct",
+            "nov.": "Nov",
+            "déc.": "Dec"
+        };
+
+        const parts = dateStr.split(' ');
+        const day = parts[0];
+        const month = months[parts[1]];
+        const year = parts[2];
+        const time = parts[3] || defaultTime;
+
+        console.log(`Parsing date: ${dateStr} -> ${day} ${month} ${year} ${time}`);
+        return new Date(`${day} ${month} ${year} ${time}`);
+    }
+
     // Convertir les dates (chaîne de caractères) en objets Date
-    const episodeDateObj = new Date(episode_date);
-    const birthDateObj = new Date(date_of_birth);
+    const episodeDateObj = parseFrenchDate(episode_date);
+    const birthDateObj = parseFrenchDate(date_of_birth);
+
+    console.log(`Episode date object: ${episodeDateObj}`);
+    console.log(`Birth date object: ${birthDateObj}`);
 
     // Convertir les objets Date en secondes depuis l'époque (epoch)
     const episodeDateInSeconds = Math.floor(episodeDateObj.getTime() / 1000);
     const birthDateInSeconds = Math.floor(birthDateObj.getTime() / 1000);
 
+    console.log(`Episode date in seconds: ${episodeDateInSeconds}`);
+    console.log(`Birth date in seconds: ${birthDateInSeconds}`);
+
+    // Vérifier si les dates sont valides
+    if (isNaN(episodeDateInSeconds) || isNaN(birthDateInSeconds)) {
+        console.error("Invalid date(s) provided.");
+        return null;
+    }
+
     // Calculer l'âge en secondes
     const ageInSeconds = episodeDateInSeconds - birthDateInSeconds;
 
-    // Convertir l'âge en années
-    const ageAtEpisode = Math.floor(ageInSeconds / (60 * 60 * 24 * 365));
-    return ageAtEpisode;
+    console.log("Age at episode in seconds: ", ageInSeconds);
+    return ageInSeconds;
 }

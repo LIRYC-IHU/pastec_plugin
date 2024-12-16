@@ -35,10 +35,11 @@ if (button) {  // Always check if the element exists
                 const data = await response.json();
                 const bearer = data.access_token;
                 document.querySelector("#auth-success").style.display = "block";  // Use "block" not "true"
-                const username_stock = await chrome.storage.local.set({"username": usernameField.value});
-                const password_stock = await chrome.storage.local.set({"password": passwordField.value});
-                const token_stock = await chrome.storage.local.set({"token": bearer});
-                const token_expiry_stock = await chrome.storage.local.set({"token_expiry": Date.now() + 30 * 60 * 1000}); // 30 minutes
+                localStorage.setItem("username", usernameField.value);
+                localStorage.setItem("password", passwordField.value);
+                localStorage.setItem("token", bearer);
+                usernameField.value = "";
+                passwordField.value = "";
             }
         } catch(error) {
             console.error("error setting up credentials: ", error);
@@ -50,17 +51,5 @@ if (button) {  // Always check if the element exists
     });
 } else {
     console.error("Submit button not found.");
-}
-
-async function setStorageData(data) {
-    return new Promise((resolve, reject) => {
-        chrome.storage.local.set(data, () => {
-            if (chrome.runtime.lastError) {
-                reject(chrome.runtime.lastError);
-            } else {
-                resolve();
-            }
-        });
-    });
 }
 

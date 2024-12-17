@@ -1,5 +1,5 @@
 import { injectGenericHTML, processViewerEpisode, convertDurationToSeconds } from "./content";
-import { authenticatedFetch } from "./auth";
+import { authenticatedFetch, authenticateUser} from "./auth";
 import { ageAtEpisode } from "./data_formatting";
 
 console.log('boston_scraping.js script initialized...');
@@ -8,6 +8,7 @@ let batchProcessing = false;
 window.addEventListener("load", async () => {
     try {
         console.log("Window loaded, starting script...");
+        const access_token = await authenticateUser();
         const patientNameElement = document.querySelector("#postage_name");
         const deviceElement = document.querySelector("#postage_device");
         const dobElement = document.querySelector('#postage_dob');
@@ -148,25 +149,63 @@ async function handleEpisodeClick(metadata, isUserClick = true) {
     try {
         await injectGenericHTML('overlay-container');
 
-        const observer = new MutationObserver(async (mutationsList, observer) => {
-            const svgElement = document.querySelectorAll("#egmSvgObjectGraph");
-            if (svgElement) {
+        const observer = new MutationObserver(async () => {
+            const svgObject = document.querySelector("#events_detail_EgmGraph #egmSvgObjectGraph");
+
+            if (svgObject) {
                 observer.disconnect();
-                const episodeResponse = await processEpisode(metadata);
-                await processViewerEpisode(metadata, episodeResponse.labels, episodeResponse.jobs, episodeResponse.annotated);
-                closeOverlay();
+
+                try {
+                    // Récupérer l'URL du fichier SVG
+                    const svgUrl = svgObject.getAttribute('data');
+                    console.log("SVG URL found:", svgUrl);
+
+                    // Attendre la réponse HTTP pour récupérer le contenu SVG
+                    const response = await fetch(svgUrl);
+                    
+                    if (!response.ok) {
+                        throw new Error(`Erreur de récupération du SVG: ${response.status}`);
+                    }
+
+                    const svgContent = await response.text();
+                    console.log("SVG content fetched:", svgContent);
+
+                    if (!svgContent) {
+                        throw new Error("Le contenu SVG est vide.");
+                    }
+
+                    // Créer un Blob à partir du contenu SVG
+                    const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+
+                    // Traitement de l'épisode
+                    const episodeResponse = await processEpisode(metadata, svgBlob);
+                    console.log("Episode created:", episodeResponse);
+
+                    if (!episodeResponse || !episodeResponse.labels) {
+                        throw new Error("Aucun label reçu.");
+                    }
+
+                    await processViewerEpisode(metadata, episodeResponse.labels, episodeResponse.jobs, episodeResponse.annotated);
+
+                    closeOverlay();
+                    console.log("Episode processed successfully");
+
+                } catch (error) {
+                    console.error("Erreur lors du traitement du SVG:", error);
+                }
             }
         });
 
+        // Observer le DOM jusqu'à ce que le pop-up soit chargé
         observer.observe(document.body, { childList: true, subtree: true });
 
-        // Ne déclencher le clic que si ce n'est pas déjà un clic utilisateur
+        // Simuler un clic automatique si ce n'est pas un clic utilisateur
         if (!isUserClick) {
             metadata.selector.click();
         }
 
     } catch (error) {
-        console.error("Error processing episode on click:", error);
+        console.error("Erreur lors du traitement de l'épisode:", error);
     }
 }
 
@@ -178,43 +217,47 @@ async function handleBatchAnalysis(link, dataTable, isUserClick = false) {
             await injectGenericHTML('overlay-container');
             console.log("HTML injected for overlay");
 
-            const observer = new MutationObserver(async (mutationsList, observer) => {
+            const observer = new MutationObserver(async () => {
                 const svgObject = document.querySelector("#events_detail_EgmGraph #egmSvgObjectGraph");
+
                 if (svgObject) {
                     observer.disconnect();
-                    
+
                     try {
+                        // Récupération de l'URL du fichier SVG
                         const svgUrl = svgObject.getAttribute('data');
                         console.log("SVG URL found:", svgUrl);
-                        
-                        // Faire une requête pour obtenir le contenu SVG
+
+                        // Requête pour récupérer le contenu SVG
                         const response = await fetch(svgUrl);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Erreur de récupération du SVG : ${response.status}`);
+                        }
+
                         const svgContent = await response.text();
-                        
+                        console.log("SVG content fetched:", svgContent);
+
                         if (!svgContent) {
-                            console.error("SVG content missing");
-                            throw new Error("Failed to get SVG content");
+                            throw new Error("Le contenu SVG est vide.");
                         }
-                        
+
                         const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
-                        
-                        // Créer l'épisode et récupérer les labels
+
+                        // Traitement de l'épisode
                         const episodeResponse = await processEpisode(metadata, svgBlob);
-                        console.log("Episode created with response:", episodeResponse);
-                        
+                        console.log("Episode created:", episodeResponse);
+
                         if (!episodeResponse || !episodeResponse.labels) {
-                            console.error("No labels received from server");
-                            throw new Error("No labels received from server");
+                            throw new Error("Aucun label reçu.");
                         }
-                        
-                        const token = localStorage.getItem("token");
+
                         await processViewerEpisode(metadata, episodeResponse.labels, episodeResponse.jobs, episodeResponse.annotated);
-                        
+
                         closeOverlay();
-                        console.log("Episode processed properly");
                         resolve();
                     } catch (error) {
-                        console.error("Error processing SVG:", error);
+                        console.error("Erreur lors du traitement du SVG:", error);
                         resolve();
                     }
                 }
@@ -222,7 +265,7 @@ async function handleBatchAnalysis(link, dataTable, isUserClick = false) {
 
             observer.observe(document.body, { childList: true, subtree: true });
 
-            // Ne déclencher le clic que si ce n'est pas déjà un clic utilisateur
+            // Simuler un clic automatique si ce n'est pas un clic utilisateur
             if (!isUserClick) {
                 link.click();
             }

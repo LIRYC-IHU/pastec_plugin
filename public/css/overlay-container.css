@@ -134,6 +134,13 @@ html body #overlay-container {
   border-radius: 50% !important;
 }
 
+.ai-field-value {
+  font: var(--main-font) !important;
+  align-self: center;
+  padding: 1rem 1rem !important;
+  box-sizing: content-box !important;
+}
+
 .wrapper{
     font: var(--main-font) !important;
     font-family: var(--main-font) !important;

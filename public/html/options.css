@@ -47,6 +47,8 @@ body{
     margin: 0 auto; /* Ajouté pour centrer les boutons */
 }
 
+.ai-field
+
 .label-button:hover{
     transition: all 0.3s ease;
     transform: translateY(-0.1rem);

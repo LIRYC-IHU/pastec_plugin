@@ -1,4 +1,4 @@
-async function authenticateUser() {
+export async function authenticateUser() {
 
     const { username, password } = await chrome.storage.local.get(["username", "password"]);
 
@@ -39,11 +39,21 @@ async function getValidToken() {
     const refreshToken = localStorage.getItem("refresh_token");
     const expiryTime = localStorage.getItem("expiry_time");
 
-    //si le token est toujours valide, retourner le token
+    console.log("Debug token expiration:", {
+        currentTime: Date.now(),
+        expiryTime: expiryTime,
+        timeLeft: expiryTime - Date.now(),
+        isExpired: Date.now() >= expiryTime
+    });
+
+    // Si le token est toujours valide, le retourner
     if (token && Date.now() < expiryTime) {
         return token;
-    } else {
-        console.debug("Token expired, refreshing token...");
+    }
+
+    // Tenter de rafraîchir le token
+    if (refreshToken) {
+        console.log(refreshToken)
         try {
             const response = await fetch("http://127.0.0.1:8000/users/token/refresh", {
                 method: "POST",
@@ -54,28 +64,38 @@ async function getValidToken() {
                     "refresh_token": refreshToken
                 })
             });
-    
+
             if (!response.ok) {
-                console.debug("Token refresh failed:", response.statusText);
-                console.log("trying to authenticate user:");
-                const access_token = await authenticateUser();
-                return access_token;
+                throw new Error(`Token refresh failed: ${response.statusText}`);
             }
 
             const data = await response.json();
-            localStorage.setItem("token", data.access_token);
-            localStorage.setItem("refresh_token", data.refresh_token);
-            localStorage.setItem("expiry_time", Date.now()+data.expires_in);
-
-            return data.access_token;
+            
+            // Vérifier si le token de rafraîchissement a bien fonctionné
+            if (data.access_token && data.expires_in) {
+                localStorage.setItem("token", data.access_token);
+                localStorage.setItem("refresh_token", data.refresh_token || refreshToken);
+                localStorage.setItem("expiry_time", Date.now() + data.expires_in * 1000);
+                console.log("Token successfully refreshed.");
+                return data.access_token;
+            } else {
+                throw new Error("Invalid token response during refresh.");
+            }
 
         } catch (error) {
-            console.error("Error refreshing token:", error);
-            throw error;
+            console.error("Token refresh failed:", error);
         }
     }
 
-    
+    // Tentative de réauthentification
+    try {
+        console.log("Trying to authenticate user...");
+        const accessToken = await authenticateUser(); // Assurez-vous que cette fonction est définie
+        return accessToken;
+    } catch (error) {
+        console.error("Error during authentication:", error);
+        throw new Error("Authentication failed.");
+    }
 }
 
 export async function authenticatedFetch(url, options = {}) {

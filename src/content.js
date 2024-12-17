@@ -1,5 +1,4 @@
 import * as pdfjsLib from "pdfjs-dist";
-import * as moment from 'moment';
 import { authenticatedFetch } from "./auth";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.js');
@@ -147,12 +146,12 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
                 const data = await fetchJobData(job);
                 if (data) {
                     const jobElement = document.createElement('div');
-                    jobElement.className = "job-element";
+                    jobElement.className = "ai-field-value";
 
                     if (data.status === "completed") {
                         jobElement.textContent = `${data.id_model} - ${data.job_annotation}`;
                     } else {
-                        jobElement.textContent = `${data.id_model} - En cours...`;
+                        jobElement.textContent = `${data.id_model} - En cours`;
                         allCompleted = false;
                     }
 

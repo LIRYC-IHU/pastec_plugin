@@ -287,25 +287,55 @@ async function processEpisode(metadata, files) {
         formData.append("episode_duration", metadata.duration.toString());
         formData.append("episode_id", metadata.episodeId);
 
+        // Étape 1 : Appel à `upload_episode`
+        console.log("Uploading episode metadata...");
         const response = await authenticatedFetch("http://127.0.0.1:8000/episode/upload_episode", {
             method: "POST",
             body: formData
         });
 
         const responseData = await response.json();
-        console.log("Response data:", responseData);
+        console.log("Response data from upload_episode:", responseData);
 
-        if (!responseData.exists) {
+        // Labels disponibles dans `responseData`
+        const labels = responseData.labels;
+
+        // Étape 2 : Vérifiez si l'épisode existe
+        if (responseData.exists) {
+            // L'épisode existe, récupérez directement les modèles IA et les jobs
+            console.log("Episode exists. Using response data...");
+            return {
+                labels,
+                ai_clients: responseData.ai_clients || [],
+                jobs: responseData.jobs || []
+            };
+        } else {
+            // L'épisode n'existe pas, procédez à l'upload de l'EGM
+            console.log("Episode does not exist. Proceeding to upload EGM...");
             const egmFormData = new FormData();
-            egmFormData.append("file", new Blob([files], {type: 'image/svg+xml'}), 'egm.svg');
-            
-            await authenticatedFetch(`http://127.0.0.1:8000/episode/${responseData.episode_id}/egm`, {
+            egmFormData.append("file", new Blob([files], { type: 'image/svg+xml' }), 'egm.svg');
+
+            const episodeResponse = await authenticatedFetch(`http://127.0.0.1:8000/episode/${responseData.episode_id}/egm`, {
                 method: "POST",
                 body: egmFormData
             });
-        }
 
-        return responseData;
+            if (!episodeResponse.ok) {
+                const errorText = await episodeResponse.text();
+                console.error("EGM upload failed:", episodeResponse.status, errorText);
+                throw new Error(`EGM upload failed: ${episodeResponse.status} - ${errorText}`);
+            }
+
+            const egmData = await episodeResponse.json();
+            console.log("Response data from upload_episode/egm:", egmData);
+
+            // Combinez les données des labels avec les résultats de la requête IA
+            return {
+                labels,
+                ai_clients: egmData.ai_clients || [],
+                jobs: egmData.jobs || []
+            };
+        }
     } catch (error) {
         console.error("Error processing episode:", error);
         throw error;

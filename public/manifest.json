@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "EGM Download and Annotation Plugin",
+    "name": "PASTEC Plugin",
     "description": "A simple plugin to download and annotate remote monitoring EGMs",
     "version": "1.0",
     "permissions": [

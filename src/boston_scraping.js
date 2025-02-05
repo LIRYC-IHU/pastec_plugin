@@ -3,6 +3,7 @@ import { authenticatedFetch, authenticateUser} from "./auth";
 import { ageAtEpisode } from "./data_formatting";
 
 console.log('boston_scraping.js script initialized...');
+console.log('API URL:', process.env.API_URL);
 let batchProcessing = false;
 
 window.addEventListener("load", async () => {

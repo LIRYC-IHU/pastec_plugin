@@ -8,7 +8,7 @@ export async function authenticateUser() {
     }
 
     try {
-        const response = await fetch("http://127.0.0.1:8000/users/login", {
+        const response = await fetch(`${process.env.API_URL}/users/login`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded"
@@ -55,7 +55,7 @@ async function getValidToken() {
     if (refreshToken) {
         console.log(refreshToken)
         try {
-            const response = await fetch("http://127.0.0.1:8000/users/token/refresh", {
+            const response = await fetch(`http://${process.env.API_URL}/users/token/refresh`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded"

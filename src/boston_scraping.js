@@ -3,7 +3,11 @@ import { authenticatedFetch, authenticateUser} from "./auth";
 import { ageAtEpisode } from "./data_formatting";
 
 console.log('boston_scraping.js script initialized...');
-console.log('API URL:', process.env.API_URL);
+
+
+console.log("API URL:", process.env.API_URL);
+const API_URL = process.env.API_URL;
+
 let batchProcessing = false;
 
 window.addEventListener("load", async () => {
@@ -290,7 +294,7 @@ async function processEpisode(metadata, files) {
 
         // Étape 1 : Appel à `upload_episode`
         console.log("Uploading episode metadata...");
-        const response = await authenticatedFetch("http://127.0.0.1:8000/episode/upload_episode", {
+        const response = await authenticatedFetch(`${API_URL}/episode/upload_episode`, {
             method: "POST",
             body: formData
         });
@@ -316,7 +320,7 @@ async function processEpisode(metadata, files) {
             const egmFormData = new FormData();
             egmFormData.append("file", new Blob([files], { type: 'image/svg+xml' }), 'egm.svg');
 
-            const episodeResponse = await authenticatedFetch(`http://127.0.0.1:8000/episode/${responseData.episode_id}/egm`, {
+            const episodeResponse = await authenticatedFetch(`${API_URL}/episode/${responseData.episode_id}/egm`, {
                 method: "POST",
                 body: egmFormData
             });

@@ -1,3 +1,5 @@
+const API_URL = process.env.API_URL;
+
 export async function authenticateUser() {
 
     const { username, password } = await chrome.storage.local.get(["username", "password"]);
@@ -8,7 +10,9 @@ export async function authenticateUser() {
     }
 
     try {
-        const response = await fetch(`${process.env.API_URL}/users/login`, {
+        console.log("Trying to authenticate user...");
+        console.log("URL: ", `${API_URL}/users/login`);
+        const response = await fetch(`${API_URL}/users/login`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded"
@@ -55,7 +59,7 @@ async function getValidToken() {
     if (refreshToken) {
         console.log(refreshToken)
         try {
-            const response = await fetch(`http://${process.env.API_URL}/users/token/refresh`, {
+            const response = await fetch(`${API_URL}/users/token/refresh`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded"

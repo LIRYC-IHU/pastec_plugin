@@ -7,7 +7,7 @@ module.exports = merge(config, {
     mode: 'production',
     plugins: [
         new webpack.DefinePlugin({
-            'process.env': JSON.stringify(dotenv.parsed)
+            'process.env.API_URL': JSON.stringify('https://pastec.ihu-liryc.fr')
         })
     ]
 });

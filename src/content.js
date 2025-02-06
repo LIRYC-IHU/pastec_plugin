@@ -3,6 +3,8 @@ import { authenticatedFetch } from "./auth";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.js');
 
+const API_URL = process.env.API_URL;
+
 export function cleanAllButtons() {
     const buttons = document.querySelectorAll(".label-button");
     buttons.forEach(button => {
@@ -125,7 +127,7 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
 
         const fetchJobData = async (job) => {
             try {
-                const response = await authenticatedFetch(`http://localhost:8000/ai/jobs?job_id=${job}`, {
+                const response = await authenticatedFetch(`${API_URL}/ai/jobs?job_id=${job}`, {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json"
@@ -193,7 +195,7 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
                     console.log("Sending annotation for episode:", metadata.episodeId);
                     console.log("Label:", diag);
 
-                    const response = await authenticatedFetch(`http://127.0.0.1:8000/episode/${metadata.episodeId}/annotation`, {
+                    const response = await authenticatedFetch(`${API_URL}/episode/${metadata.episodeId}/annotation`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json'
@@ -536,7 +538,7 @@ async function getEpisodeLink(system, blobUrl) {
 
 export async function addDiagnosisToEpisode(episodeId, label) {
     try {
-        const response = await authenticatedFetch(`http://127.0.0.1:8000/episodes/${encodeURIComponent(episodeId)}/label?label=${encodeURIComponent(label)}`, {
+        const response = await authenticatedFetch(`${API_URL}/episodes/${encodeURIComponent(episodeId)}/label?label=${encodeURIComponent(label)}`, {
             method: "PUT",
         });
 

@@ -8,7 +8,7 @@ module.exports = merge(config, {
     devtool: 'inline-source-map',
     plugins: [
         new webpack.DefinePlugin({
-            'process.env': JSON.stringify(dotenv.parsed)
+            'process.env.API_URL': JSON.stringify('http://localhost:8000')
         })
     ]
 });

@@ -13,7 +13,7 @@ if (button) {  // Always check if the element exists
 
         console.log("Attempting to log in with:", usernameField.value, passwordField.value);
         try {
-            const response = await fetch("http://127.0.0.1:8000/users/login", {
+            const response = await fetch("https://pastec.ihu-liryc.fr/users/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded",
@@ -35,9 +35,10 @@ if (button) {  // Always check if the element exists
                 const data = await response.json();
                 const bearer = data.access_token;
                 document.querySelector("#auth-success").style.display = "block";  // Use "block" not "true"
-                localStorage.setItem("username", usernameField.value);
-                localStorage.setItem("password", passwordField.value);
-                localStorage.setItem("token", bearer);
+                await chrome.storage.local.set({
+                    username: usernameField.value,
+                    password: passwordField.value,
+                    token: bearer});
                 usernameField.value = "";
                 passwordField.value = "";
             }

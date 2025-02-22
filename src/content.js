@@ -123,7 +123,7 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
     console.log("Metadata complet:", metadata);
     const aiSelector = document.querySelector(".ai-field-value");
 
-    if (jobs) {
+    if (jobs.length > 0) {
 
         const fetchJobData = async (job) => {
             try {
@@ -141,32 +141,42 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
         };
 
         const updateJobElements = async () => {
-            let allCompleted = true;
-            aiSelector.innerHTML = ""; // Clear previous job elements
-
-            for (const job of jobs) {
-                const data = await fetchJobData(job);
-                if (data) {
-                    const jobElement = document.createElement('div');
-                    jobElement.className = "ai-field-value";
-
-                    if (data.status === "completed") {
-                        jobElement.textContent = `${data.id_model} - ${data.job_annotation}`;
-                    } else {
-                        jobElement.textContent = `${data.id_model} - En cours`;
-                        allCompleted = false;
-                    }
-
-                    aiSelector.appendChild(jobElement);
+            let remainingJobs = [...jobs];  // Copie des jobs pour éviter de modifier l'original
+            const job_number = jobs.length;
+            const startTime = Date.now();   // Stocker le temps de début
+        
+            while (remainingJobs.length > 0) {
+                // Vérifier si le timeout de 10 secondes est atteint
+                if (Date.now() - startTime >= 10000) { 
+                    console.warn("⏳ Timeout atteint (10s) : Arrêt des requêtes IA.");
+                    aiSelector.innerHTML = "⏳ Temps d'attente dépassé. Vérifiez les résultats manuellement.";
+                    break;  // Arrêter la boucle
                 }
-            }
-
-            if (!allCompleted) {
-                setTimeout(updateJobElements, 1000); // Re-check every second
+        
+                let completedCount = 0;
+        
+                for (const job of remainingJobs) {
+                    const data = await fetchJobData(job);
+        
+                    if (data && data.status === "completed") {
+                        completedCount++;
+                    }
+                }
+        
+                const pendingCount = job_number - completedCount;
+                aiSelector.innerHTML = `${pendingCount} travaux IA en cours`;
+        
+                if (pendingCount === 0) {
+                    aiSelector.innerHTML = "✅ Tous les travaux IA sont terminés";
+                    break;  // Arrêter la boucle
+                }
+        
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Pause avant le prochain check
             }
         };
-
-        updateJobElements();
+        
+        await updateJobElements();
+        
     } else {
         const noJobElement = document.createElement('div');
         noJobElement.textContent = "Aucun travail AI en cours";
@@ -492,6 +502,8 @@ export async function encryptPatientData(data) {
 
     data.patientId = encryptResponse.patientId;
     data.episodeId = encryptResponse.episodeId;
+
+    return data;
 }
 
 export async function getEpisodeInformation(episodeId) {

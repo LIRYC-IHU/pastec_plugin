@@ -1,7 +1,11 @@
-import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, blobToBase64, encryptPatientData, getEpisodeInformation, sendDataToBackground, convertDurationToSeconds, loadJsonFile } from "./content";
+import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, blobToBase64, convertDurationToSeconds } from "./content";
+import { ageAtEpisode } from "./data_formatting";
+import { authenticateUser, authenticatedFetch } from "./auth";
 
 console.log("biotronik_scraping.js script initialized");
-const diagnoses = await loadJsonFile('Biotronik');
+
+console.log("API URL:", process.env.API_URL);
+const API_URL = process.env.API_URL;
 
 const observer = new MutationObserver((mutations, obs) => {
     const element = document.querySelector("#DisplayEpisode > table > tbody > tr:nth-child(2) > td > table > tbody > tr:nth-child(1) > td.RightColumn > table > tbody > tr > td.Content > table.ChartData > tbody > tr:nth-child(2) > td > object");
@@ -15,11 +19,15 @@ observer.observe(document, {childList: true, subtree: true});
 
 async function initializeScript() {
     try {
+
+        document.addEventListener("close_overlay", () => closeOverlay());
+
         const patientName = document.querySelector("#DisplayEpisode\\:headerPatientName").textContent;
         const implantSerial = document.querySelector("#DisplayEpisode\\:headerImplantSN").textContent;
+        const birthdate = document.querySelector("#DisplayEpisode\\:headerPatientDateOfBirth").textContent;
         catchPrintButton();
 
-        let metadata = {
+        let scrapedData = {
             patientName:  patientName,
             implantSerial: implantSerial,
             implantModel: document.querySelector("#DisplayEpisode\\:headerImplantName").textContent,
@@ -28,38 +36,57 @@ async function initializeScript() {
             episodeDuration: convertDurationToSeconds(document.querySelector("#reportData1 > tbody > tr:nth-child(6) > td.Value").textContent, "Biotronik"),
             system: 'Biotronik',
             url: window.location.href,
-            svg: document.querySelector("#DisplayEpisode > table > tbody > tr:nth-child(2) > td > table > tbody > tr:nth-child(1) > td.RightColumn > table > tbody > tr > td.Content > table.ChartData > tbody > tr:nth-child(2) > td > object").data
-        };
+            svgElement: document.querySelector("#DisplayEpisode > table > tbody > tr:nth-child(2) > td > table > tbody > tr:nth-child(1) > td.RightColumn > table > tbody > tr > td.Content > table.ChartData > tbody > tr:nth-child(2) > td > object").data
+        }; 
 
-        const blob = await fetchPdfAsBlob(metadata.svg);
-        const svg_base64 = await blobToBase64(blob);
+        console.log("Scraped data:", scrapedData);
 
         await injectGenericHTML('overlay-container');
-        await encryptPatientData(metadata);
-        const [ choices , isAnnotated ] = await getEpisodeInformation(metadata);
+        console.log("Encrypting data for episode:", scrapedData);
+        const encryptResponse = await chrome.runtime.sendMessage({
+            action: "encrypt patient data",
+            episode_info: {
+                patient_id: scrapedData.implantSerial,
+                system: scrapedData.system,
+                episode_type: scrapedData.episodeType,
+                date: scrapedData.episodeDate,
+                time: scrapedData.episodeDuration.toString()
+            }
+        });
 
-        if (!choices) {
-            console.error("No diagnostic choices registered for episodeType ", metadata.episodeType);
-        } else {
-            await processViewerEpisode(metadata, choices, isAnnotated);
-            if (!metadata.diagnosis) {
-                console.log (`no diagnosis entered for this episode`);
-            } 
-            const response = await sendDataToBackground({files: svg_base64, metadata: metadata, isAnnotated: isAnnotated});
-            if (response.status === "success") {
-                console.log(response.message);
-                document.querySelector("#DisplayEpisode\\:displayNextEpisodeTop").click();
-            } else {
-                console.error(response.message, ": ", response.error);
-            }        
+        const metadata = {
+            patientName: scrapedData.patientName,
+            implantSerial: scrapedData.implantSerial,
+            implantModel: scrapedData.implantModel,
+            episodeDate: scrapedData.episodeDate,
+            birthdate: birthdate,
+            episodeType: scrapedData.episodeType,
+            episodeDuration: scrapedData.episodeDuration,
+            system: scrapedData.system,
+            patientId: encryptResponse?.patientId,
+            episodeId: encryptResponse?.episodeId
         }
+
+        console.log("Encrypted metadata:", metadata);
+
+        const responseData = await processEpisode(metadata);
+
+        try {
+            await processViewerEpisode(metadata, responseData.labels, responseData.jobs, responseData.annotated);
+            if(document.querySelector("#DisplayEpisode\\:displayNextEpisodeTop").disabled == true){
+                window.alert("tous les épisodes ont été traités");
+                closeOverlay()
+            } else {
+                document.querySelector("#DisplayEpisode\\:displayNextEpisodeTop").click();
+            };
+        } catch (error) {
+            console.error("erreur pendant le processing de l'episode: ", error);
+        }       
     } catch (error) {
         console.error("An error occurred: ", error);
     }
 
-    if(document.querySelector("#DisplayEpisode\\:displayNextEpisodeTop").disabled == true){
-        window.alert("tous les épisodes ont été traités");
-    };
+
 }
 
 async function catchPrintButton() {
@@ -133,4 +160,111 @@ try {
     console.error("Erreur lors de la récupération du PDF:", error);
 }
 
+}
+
+async function processEpisode(metadata) {
+    console.log("Processing viewer episode...");
+    
+    try {
+        const formData = new FormData();
+        formData.append("patient_id", metadata.patientId);
+        formData.append("manufacturer", metadata.system.toLowerCase());
+        formData.append("episode_type", metadata.episodeType);
+        formData.append("age_at_episode", ageAtEpisode(metadata.episodeDate, metadata.birthdate) || 0);
+        formData.append("episode_duration", metadata.episodeDuration.toString());
+        formData.append("episode_id", metadata.episodeId);
+
+        // Étape 1 : Appel à `upload_episode`
+        console.log("Uploading episode metadata...");
+        const response = await authenticatedFetch(`${API_URL}/episode/upload_episode`, {
+            method: "POST",
+            body: formData
+        });
+
+        const responseData = await response.json();
+        console.log("Response data from upload_episode:", responseData);
+
+        // Labels disponibles dans `responseData`
+        const labels = responseData.labels;
+
+        // Étape 2 : Vérifiez si l'épisode existe
+        if (responseData.exists) {
+            // L'épisode existe, récupérez directement les modèles IA et les jobs
+            console.log("Episode exists. Using response data...");
+            return {
+                labels,
+                ai_clients: responseData.ai_clients || [],
+                jobs: responseData.jobs || []
+            };
+        } else {
+            const svgBlob = await getSVGBlob();
+            if (!svgBlob) {
+                console.error("❌ Impossible de récupérer le SVG en Blob.");
+                return;
+            }
+        
+            // Vérification
+            console.log("🎯 Taille du fichier SVG (Blob) :", svgBlob.size, "octets");
+        
+            // Préparer FormData
+            const egmFormData = new FormData();
+            egmFormData.append("file", svgBlob, "egm.svg");
+
+            const episodeResponse = await authenticatedFetch(`${API_URL}/episode/${responseData.episode_id}/egm`, {
+                method: "POST",
+                body: egmFormData
+            });
+
+            if (!episodeResponse.ok) {
+                const errorText = await episodeResponse.text();
+                console.error("EGM upload failed:", episodeResponse.status, errorText);
+                throw new Error(`EGM upload failed: ${episodeResponse.status} - ${errorText}`);
+            }
+
+            const egmData = await episodeResponse.json();
+            console.log("Response data from upload_episode/egm:", egmData);
+
+            // Combinez les données des labels avec les résultats de la requête IA
+            return {
+                labels,
+                ai_clients: egmData.ai_clients || [],
+                jobs: egmData.jobs || []
+            };
+        }
+    } catch (error) {
+        console.error("Error processing episode:", error);
+        throw error;
+    }
+}
+
+function closeOverlay() {
+    const closeButton = document.querySelector("body > div.ui-dialog.ui-corner-all.ui-widget.ui-widget-content.ui-front > div.ui-dialog-titlebar.ui-corner-all.ui-widget-header.ui-helper-clearfix > button");
+    if (closeButton) {
+        closeButton.click();
+    }
+    const overlayContainer = document.querySelector("#overlay-container");
+    if (overlayContainer) {
+        overlayContainer.style.display = "none";
+        overlayContainer.innerHTML = "";
+    }
+}
+
+async function getSVGBlob() {
+    const objectElement = document.querySelector('object[type="image/svg+xml"]');
+    
+    if (!objectElement || !objectElement.data) {
+        console.error("❌ Aucun objet SVG trouvé !");
+        return null;
+    }
+
+    try {
+        const response = await fetch(objectElement.data); // Télécharger le SVG
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP: ${response.status}`);
+        }
+        return await response.blob(); // Convertir en Blob
+    } catch (error) {
+        console.error("❌ Erreur lors de la récupération du SVG :", error);
+        return null;
+    }
 }

@@ -4,7 +4,6 @@ import { ageAtEpisode } from "./data_formatting";
 
 console.log('boston_scraping.js script initialized...');
 
-
 console.log("API URL:", process.env.API_URL);
 const API_URL = process.env.API_URL;
 
@@ -173,7 +172,6 @@ async function handleEpisodeClick(metadata, isUserClick = true) {
                     }
 
                     const svgContent = await response.text();
-                    console.log("SVG content fetched:", svgContent);
 
                     if (!svgContent) {
                         throw new Error("Le contenu SVG est vide.");

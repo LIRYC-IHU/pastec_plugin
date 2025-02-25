@@ -8,11 +8,20 @@ console.log("API URL:", process.env.API_URL);
 const API_URL = process.env.API_URL;
 
 let batchProcessing = false;
+let labels = [];
 
 window.addEventListener("load", async () => {
     try {
         console.log("Window loaded, starting script...");
         const access_token = await authenticateUser();
+
+        // getting all the labels for the manufacturer to improve reactiveness
+        const allLabelsResponse = await authenticatedFetch(`${API_URL}/episode/diagnoses_labels/Boston`);
+        const allLabels = await allLabelsResponse.json();
+        labels = allLabels.labels;
+        console.log("Labels extracted:", labels);
+
+
         const patientNameElement = document.querySelector("#postage_name");
         const deviceElement = document.querySelector("#postage_device");
         const dobElement = document.querySelector('#postage_dob');
@@ -81,15 +90,17 @@ window.addEventListener("load", async () => {
         console.log("DataTable prepared:", dataTable.length, "episodes");
 
         setTimeout(async () => {
+            console.log("setting up the listeners...");
+            await setupListeners(dataTable);
             console.log("Showing confirmation dialog");
             const userResponse = window.confirm("Voulez-vous commencer l'analyse de tous les tracés?");
             if (userResponse) {
+                // getting all the links to the EGMs
+                const egmLinks = document.querySelectorAll(".trueEgmIcon");
                 console.log("Starting batch processing");
-                batchProcessing = true;
-                await setupListeners(dataTable);
+                handleBatchAnalysis(egmLinks, dataTable);
             } else {
                 console.log("Batch processing cancelled by user");
-                await setupListeners(dataTable);
             }
         }, 100);
 
@@ -108,7 +119,6 @@ async function setupListeners(dataTable) {
         console.error("Episode table not found");
         return;
     }
-
     console.log("Adding click listener to episode table");
     episodeElement.addEventListener('click', async (event) => {
         const target = event.target;
@@ -137,145 +147,85 @@ async function setupListeners(dataTable) {
             console.log("Click not on EGM icon");
         }
     });
-    
-    if (batchProcessing) {
-        const egmLinks = document.querySelectorAll(".trueEgmIcon");
-        console.log(`Found ${egmLinks.length} EGM links to process`);
-        
-        for (const [index, link] of egmLinks.entries()) {
-            console.log(`Processing episode ${index + 1} of ${egmLinks.length}`);
-            await handleBatchAnalysis(link, dataTable, false);
-        }
-    }
 }
 
-async function handleEpisodeClick(metadata, isUserClick = true) {
-    try {
-        await injectGenericHTML('overlay-container');
-
-        const observer = new MutationObserver(async () => {
-            const svgObject = document.querySelector("#events_detail_EgmGraph #egmSvgObjectGraph");
-
-            if (svgObject) {
-                observer.disconnect();
-
-                try {
-                    // Récupérer l'URL du fichier SVG
-                    const svgUrl = svgObject.getAttribute('data');
-                    console.log("SVG URL found:", svgUrl);
-
-                    // Attendre la réponse HTTP pour récupérer le contenu SVG
-                    const response = await fetch(svgUrl);
-                    
-                    if (!response.ok) {
-                        throw new Error(`Erreur de récupération du SVG: ${response.status}`);
-                    }
-
-                    const svgContent = await response.text();
-
-                    if (!svgContent) {
-                        throw new Error("Le contenu SVG est vide.");
-                    }
-
-                    // Créer un Blob à partir du contenu SVG
-                    const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
-
-                    // Traitement de l'épisode
-                    const episodeResponse = await processEpisode(metadata, svgBlob);
-                    console.log("Episode created:", episodeResponse);
-
-                    if (!episodeResponse || !episodeResponse.labels) {
-                        throw new Error("Aucun label reçu.");
-                    }
-
-                    await processViewerEpisode(metadata, episodeResponse.labels, episodeResponse.jobs, episodeResponse.annotated);
-
-                    closeOverlay();
-                    console.log("Episode processed successfully");
-
-                } catch (error) {
-                    console.error("Erreur lors du traitement du SVG:", error);
-                }
-            }
-        });
-
-        // Observer le DOM jusqu'à ce que le pop-up soit chargé
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        // Simuler un clic automatique si ce n'est pas un clic utilisateur
-        if (!isUserClick) {
-            metadata.selector.click();
-        }
-
-    } catch (error) {
-        console.error("Erreur lors du traitement de l'épisode:", error);
-    }
-}
-
-async function handleBatchAnalysis(link, dataTable, isUserClick = false) {
-    return new Promise(async (resolve) => {
-        const metadata = dataTable.find(md => md.selector === link);
-
-        if (metadata) {
-            await injectGenericHTML('overlay-container');
-            console.log("HTML injected for overlay");
-
+async function handleEpisodeClick(metadata) {
+    return new Promise(async(resolve) => {
+        try {
+            // 1) Injecter l'overlay
+            await injectGenericHTML("overlay-container");
+            // 2) Préparer un observer pour capter l'insertion du SVG
             const observer = new MutationObserver(async () => {
                 const svgObject = document.querySelector("#events_detail_EgmGraph #egmSvgObjectGraph");
-
                 if (svgObject) {
                     observer.disconnect();
-
                     try {
-                        // Récupération de l'URL du fichier SVG
-                        const svgUrl = svgObject.getAttribute('data');
+                        console.log("SVG object found:", svgObject);
+                        const svgUrl = svgObject.getAttribute("data");
                         console.log("SVG URL found:", svgUrl);
 
-                        // Requête pour récupérer le contenu SVG
                         const response = await fetch(svgUrl);
-                        
                         if (!response.ok) {
-                            throw new Error(`Erreur de récupération du SVG : ${response.status}`);
+                            throw new Error(`Erreur de récupération du SVG: ${response.status}`);
                         }
 
                         const svgContent = await response.text();
-                        console.log("SVG content fetched:", svgContent);
-
                         if (!svgContent) {
                             throw new Error("Le contenu SVG est vide.");
                         }
 
-                        const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+                        // Créer un Blob
+                        const svgBlob = new Blob([svgContent], { type: "image/svg+xml" });
+                        // 3) Upload + process
+                        const uploadPromise = processEpisode(metadata, svgBlob);
+                        console.log("Episode created:", uploadPromise);
 
-                        // Traitement de l'épisode
-                        const episodeResponse = await processEpisode(metadata, svgBlob);
-                        console.log("Episode created:", episodeResponse);
-
-                        if (!episodeResponse || !episodeResponse.labels) {
-                            throw new Error("Aucun label reçu.");
-                        }
-
-                        await processViewerEpisode(metadata, episodeResponse.labels, episodeResponse.jobs, episodeResponse.annotated);
+                        await processViewerEpisode(metadata, labels[metadata.episodeType], uploadPromise);
 
                         closeOverlay();
+                        console.log("Episode processed successfully (handleEpisodeClick).");
                         resolve();
                     } catch (error) {
                         console.error("Erreur lors du traitement du SVG:", error);
-                        resolve();
                     }
                 }
             });
-
             observer.observe(document.body, { childList: true, subtree: true });
 
-            // Simuler un clic automatique si ce n'est pas un clic utilisateur
-            if (!isUserClick) {
-                link.click();
-            }
-        } else {
-            resolve();
+        } catch (error) {
+            console.error("Erreur lors du traitement de l'épisode:", error);
         }
+
     });
+}
+
+
+
+async function handleBatchAnalysis(egmLinks, dataTable) {
+    console.log("Starting batch analysis...");
+
+    for (let i = 0; i < egmLinks.length; i++) {
+        const link = egmLinks[i];
+        link.click();
+        console.log(`Link n°${i+1}:`, link);
+
+        // Récupérer la metadata associée
+        const metadata = dataTable.find(md => md.selector === link);
+        if (!metadata) {
+            console.warn("No metadata found for this link, skipping...");
+            continue;
+        }
+
+        const episodePromise = handleEpisodeClick(metadata, false);
+        console.log("Episode promise:", episodePromise);
+        await episodePromise;
+        
+        // Une fois fini, on passe au suivant
+        console.log(`Episode ${i+1} OK, next...`);
+
+    }
+
+    console.log("Batch processing complete.");
 }
 
 async function processEpisode(metadata, files) {
@@ -299,6 +249,8 @@ async function processEpisode(metadata, files) {
 
         const responseData = await response.json();
         console.log("Response data from upload_episode:", responseData);
+        console.log('responsedata.exists:', responseData.exists);
+
 
         // Labels disponibles dans `responseData`
         const labels = responseData.labels;
@@ -308,7 +260,7 @@ async function processEpisode(metadata, files) {
             // L'épisode existe, récupérez directement les modèles IA et les jobs
             console.log("Episode exists. Using response data...");
             return {
-                labels,
+                exists: responseData.exists,
                 ai_clients: responseData.ai_clients || [],
                 jobs: responseData.jobs || []
             };
@@ -334,7 +286,7 @@ async function processEpisode(metadata, files) {
 
             // Combinez les données des labels avec les résultats de la requête IA
             return {
-                labels,
+                exists: responseData.exists,
                 ai_clients: egmData.ai_clients || [],
                 jobs: egmData.jobs || []
             };

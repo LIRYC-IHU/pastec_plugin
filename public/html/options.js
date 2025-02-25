@@ -5,15 +5,16 @@ if (button) {  // Always check if the element exists
     button.addEventListener('click', async () => {
         const usernameField = document.querySelector("#username");
         const passwordField = document.querySelector("#password");
+        const urlField = document.querySelector("#url");
 
         if (!usernameField || !passwordField) {
             console.error("Username or password field is missing.");
             return;
         }
 
-        console.log("Attempting to log in with:", usernameField.value, passwordField.value);
+        console.log("Attempting to log in with:", usernameField.value, passwordField.value, urlField.value);
         try {
-            const response = await fetch("https://pastec.ihu-liryc.fr/users/login", {
+            const response = await fetch(`${urlField.value}/users/login`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded",

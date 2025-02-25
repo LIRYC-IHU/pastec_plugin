@@ -113,139 +113,94 @@ export async function uint8ArrayToBase64(uint8Array) {
     });
 }
 
-export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) {
+export async function processViewerEpisode(metadata, labels, uploadPromise) {
     const pdf_viewer = document.querySelector(".popup-label-buttons");
+    pdf_viewer.innerHTML = "";
+
+    console.log("Metadata in processViewerEpisode:", metadata);
+    console.log("Labels in processViewerEpisode:", labels);
+    console.log("uploadPromise in processViewerEpisode:", uploadPromise); 
+
     if (!pdf_viewer) {
         console.error("Popup container not found.");
         throw new Error("Popup container not found.");
     }
 
-    console.log("Metadata complet:", metadata);
+    checkJobStatus(uploadPromise);
+
     const aiSelector = document.querySelector(".ai-field-value");
 
-    if (jobs.length > 0) {
-
-        const fetchJobData = async (job) => {
-            try {
-                const response = await authenticatedFetch(`${API_URL}/ai/jobs?job_id=${job}`, {
-                    method: "GET",
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
-                });
-                return await response.json();
-            } catch (error) {
-                console.error("Failed to fetch job data:", error);
-                return null;
-            }
-        };
-
-        const updateJobElements = async () => {
-            let remainingJobs = [...jobs];  // Copie des jobs pour éviter de modifier l'original
-            const job_number = jobs.length;
-            const startTime = Date.now();   // Stocker le temps de début
-        
-            while (remainingJobs.length > 0) {
-                // Vérifier si le timeout de 10 secondes est atteint
-                if (Date.now() - startTime >= 10000) { 
-                    console.warn("⏳ Timeout atteint (10s) : Arrêt des requêtes IA.");
-                    aiSelector.innerHTML = "⏳ Temps d'attente dépassé. Vérifiez les résultats manuellement.";
-                    break;  // Arrêter la boucle
-                }
-        
-                let completedCount = 0;
-        
-                for (const job of remainingJobs) {
-                    const data = await fetchJobData(job);
-        
-                    if (data && data.status === "completed") {
-                        completedCount++;
-                    }
-                }
-        
-                const pendingCount = job_number - completedCount;
-                aiSelector.innerHTML = `${pendingCount} travaux IA en cours`;
-        
-                if (pendingCount === 0) {
-                    aiSelector.innerHTML = "✅ Tous les travaux IA sont terminés";
-                    break;  // Arrêter la boucle
-                }
-        
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Pause avant le prochain check
-            }
-        };
-        
-        await updateJobElements();
-        
-    } else {
-        const noJobElement = document.createElement('div');
-        noJobElement.textContent = "Aucun travail AI en cours";
-        aiSelector.appendChild(noJobElement);
-    }
-
-    addListenersToPopup("overlay-container");
-
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+    // populate the overlay with the buttons
         console.log("Diagnostic choices:", labels);
         labels.forEach((diag, index) => {
-            const labelButton = document.createElement('button');
-            labelButton.className = "label-button";
-            labelButton.textContent = `${index + 1} - ${diag}`;
-            pdf_viewer.appendChild(labelButton);
+        const labelButton = document.createElement('button');
+        labelButton.className = "label-button";
+        labelButton.textContent = `${index + 1} - ${diag}`;
+        pdf_viewer.appendChild(labelButton);
 
-            labelButton.addEventListener('click', async () => {
-                try {
-                    const token = localStorage.getItem("token");
-                    
-                    // Vérifier que l'ID de l'épisode existe
-                    if (!metadata.episodeId) {
-                        throw new Error("Episode ID is missing from metadata");
-                    }
-                    
-                    console.log("Sending annotation for episode:", metadata.episodeId);
-                    console.log("Label:", diag);
+        labelButton.addEventListener('click', async () => {
+            try {       
+                const { exists, ai_clients, jobs } = await uploadPromise;  
+                
+                console.log("exists:", exists);
+                console.log("ai_clients", ai_clients);
+                console.log("jobs", jobs);
+                // Vérifier que l'ID de l'épisode existe
+                if (!metadata.episodeId) {
+                    throw new Error("Episode ID is missing from metadata");
+                }
+                
+                console.log("Sending annotation for episode:", metadata.episodeId);
+                console.log("Label:", diag);
 
-                    const response = await authenticatedFetch(`${API_URL}/episode/${metadata.episodeId}/annotation`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            label: diag
-                        })
-                    });
+                const response = await authenticatedFetch(`${API_URL}/episode/${metadata.episodeId}/annotation`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        label: diag
+                    })
+                });
 
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        console.error("Annotation error details:", errorData);
-                        throw new Error(`Error adding annotation: ${response.statusText} - ${JSON.stringify(errorData)}`);
-                    }
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error("Annotation error details:", errorData);
+                    throw new Error(`Error adding annotation: ${response.statusText} - ${JSON.stringify(errorData)}`);
+                }
 
-                    const annotationResult = await response.json();
-                    console.log("Annotation added successfully:", annotationResult);
+                const annotationResult = await response.json();
+                console.log("Annotation added successfully:", annotationResult);
+                console.log("is annotated", exists);
 
-                    // Continuer avec le reste du traitement
-                    if (isAnnotated) {
-                        if (window.confirm(`L'épisode en cours d'analyse est déjà annoté dans la base de données ; confirmer la nouvelle entrée?`)) {
-                            await processDiagnosis(diag, metadata);
-                            resolve(metadata);
-                        } else {
-                            resolve(metadata);
-                        }
-                    } else {
+                // Continuer avec le reste du traitement
+                if (exists) {
+                    if (window.confirm(`L'épisode en cours d'analyse est déjà annoté dans la base de données ; confirmer la nouvelle entrée?`)) {
                         await processDiagnosis(diag, metadata);
+                        console.log("resolving episode already in database")
+                        resolve(metadata);
+                    } else {
+                        console.log("episode already in database, resolving without annotation")
                         resolve(metadata);
                     }
-
-                    cleanAllButtons();
-                    document.querySelector("#option-1").checked = false;
-                    document.querySelector("#option-2").checked = true;
-                } catch (error) {
-                    console.error("Error processing annotation:", error);
-                    reject(error);
+                } else {
+                    await processDiagnosis(diag, metadata);
+                    console.log("resolving episode not in database")
+                    resolve(metadata);
                 }
-            });
+
+                cleanAllButtons();
+                document.querySelector("#option-1").checked = false;
+                document.querySelector("#option-2").checked = true;
+            } catch (error) {
+                console.error("Error processing annotation:", error);
+                reject(error);
+            }
         });
+        });
+
+    addListenersToPopup("overlay-container");
 
         // Bouton pour passer l'épisode
         const skipButton = document.querySelector("#skip");
@@ -254,6 +209,7 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
             cleanAllButtons();
             document.querySelector("#option-1").checked = false;
             document.querySelector("#option-2").checked = true;
+            console.log("resolving skip button")
             resolve(metadata);
         });
 
@@ -263,18 +219,6 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
             data.diagnosis = diagnosis;
             data.isAlert = document.querySelector("#option-1").checked;
             console.log("Alert status:", data.isAlert);
-            if (data.isAlert) {
-                if (data.system === "Biotronik") {
-                    document.querySelector("#DisplayEpisode\\:printButton").click();
-                } else {
-                    data.episodeLink = await getEpisodeLink(data.system, data.blobUrl);
-                    console.log("Data before sending background alert printing:", data);
-                    chrome.runtime.sendMessage({
-                        action: "handle alert printing",
-                        message: data
-                    });
-                }
-            }
         }
 
         // Raccourcis clavier pour sélectionner un diagnostic avec les touches numériques
@@ -289,6 +233,74 @@ export async function processViewerEpisode(metadata, labels, jobs, isAnnotated) 
             }
         };
     });
+
+    console.log("End of processViewerEpisode, auto-resolving promise");
+}
+
+async function checkJobStatus(uploadPromise) {
+
+    const aiSelector = document.querySelector(".ai-field-value");
+
+    try {
+        uploadPromise.then(async ({ ai_client, jobs }) => {
+            const fetchJobData = async (job) => {
+                try {
+                    const response = await authenticatedFetch(`${API_URL}/ai/jobs?job_id=${job}`, {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json"
+                        }
+                    });
+                    return await response.json();
+                } catch (error) {
+                    console.error("Failed to fetch job data:", error);
+                    return null;
+                }
+            };
+    
+            const updateJobElements = async () => {
+                let remainingJobs = [...jobs];  // Copie des jobs pour éviter de modifier l'original
+                const job_number = jobs.length;
+                const startTime = Date.now();   // Stocker le temps de début
+            
+                while (remainingJobs.length > 0) {
+                    // Vérifier si le timeout de 10 secondes est atteint
+                    if (Date.now() - startTime >= 10000) { 
+                        console.warn("⏳ Timeout atteint (10s) : Arrêt des requêtes IA.");
+                        aiSelector.innerHTML = "⏳ Temps d'attente dépassé. Vérifiez les résultats manuellement.";
+                        break;  // Arrêter la boucle
+                    }
+            
+                    let completedCount = 0;
+            
+                    for (const job of remainingJobs) {
+                        const data = await fetchJobData(job);
+            
+                        if (data && data.status === "completed") {
+                            completedCount++;
+                        }
+                    }
+            
+                    const pendingCount = job_number - completedCount;
+                    aiSelector.innerHTML = `${pendingCount} travaux IA en cours`;
+            
+                    if (pendingCount === 0) {
+                        aiSelector.innerHTML = "✅ Tous les travaux IA sont terminés";
+                        break;  // Arrêter la boucle
+                    }
+            
+                    await new Promise(resolve => setTimeout(() => {
+                        console.log("resolving in job check")
+                        resolve();
+                    }, 1000)); // Pause avant le prochain check
+                }
+            };
+            await updateJobElements();
+        });
+    } catch(error) {
+        console.error("Error in checkJobStatus:", error);
+        throw new Error("Failed to check job status");
+    }   
 }
 
 export async function loadPdfAndExtractImages(pdfBlob, system) {

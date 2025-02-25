@@ -19,7 +19,10 @@ observer.observe(document, {childList: true, subtree: true});
 
 async function initializeScript() {
     try {
-
+        console.log("Initializing Biotronik scraping script...");
+        const allLabelsResponse = await authenticatedFetch(`${API_URL}/episode/diagnoses_labels/Biotronik`);
+        const allLabels = await allLabelsResponse.json();
+        const labels = allLabels.labels;    
         document.addEventListener("close_overlay", () => closeOverlay());
 
         const patientName = document.querySelector("#DisplayEpisode\\:headerPatientName").textContent;
@@ -69,10 +72,10 @@ async function initializeScript() {
 
         console.log("Encrypted metadata:", metadata);
 
-        const responseData = await processEpisode(metadata);
+        const uploadEpisode = processEpisode(metadata);
 
         try {
-            await processViewerEpisode(metadata, responseData.labels, responseData.jobs, responseData.annotated);
+            await processViewerEpisode(metadata, labels[metadata.episodeType], uploadEpisode);
             if(document.querySelector("#DisplayEpisode\\:displayNextEpisodeTop").disabled == true){
                 window.alert("tous les épisodes ont été traités");
                 closeOverlay()
@@ -85,8 +88,6 @@ async function initializeScript() {
     } catch (error) {
         console.error("An error occurred: ", error);
     }
-
-
 }
 
 async function catchPrintButton() {

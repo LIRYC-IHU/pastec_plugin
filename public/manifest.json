@@ -2,11 +2,10 @@
     "manifest_version": 3,
     "name": "PASTEC Plugin",
     "description": "A simple plugin to download and annotate remote monitoring EGMs",
-    "version": "1.0",
+    "version": "0.0.0.1",
     "permissions": [
         "activeTab",
         "storage",
-        "unlimitedStorage",
         "scripting",
         "tabs",
         "webNavigation",
@@ -17,7 +16,6 @@
         "cookies"
       ],
     "host_permissions": [
-      "https://www.biotronik-homemonitoring.com/hmsc_guiWeb/patient/monitoring/*",
       "https://pastec.ihu-liryc.fr/*"
     ],
     "background": {

@@ -260,6 +260,7 @@ async function processEpisode(metadata, files) {
             // L'épisode existe, récupérez directement les modèles IA et les jobs
             console.log("Episode exists. Using response data...");
             return {
+                annotated: responseData.annotated,
                 exists: responseData.exists,
                 ai_clients: responseData.ai_clients || [],
                 jobs: responseData.jobs || []
@@ -286,6 +287,7 @@ async function processEpisode(metadata, files) {
 
             // Combinez les données des labels avec les résultats de la requête IA
             return {
+                annotated: responseData.annotated,
                 exists: responseData.exists,
                 ai_clients: egmData.ai_clients || [],
                 jobs: egmData.jobs || []

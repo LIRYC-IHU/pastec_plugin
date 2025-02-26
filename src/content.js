@@ -141,9 +141,10 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
 
         labelButton.addEventListener('click', async () => {
             try {       
-                const { exists, ai_clients, jobs } = await uploadPromise;  
+                const { annotated, exists, ai_clients, jobs } = await uploadPromise;  
                 
                 console.log("exists:", exists);
+                console.log("annotated:", annotated);
                 console.log("ai_clients", ai_clients);
                 console.log("jobs", jobs);
                 // Vérifier que l'ID de l'épisode existe
@@ -175,7 +176,7 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
                 console.log("is annotated", exists);
 
                 // Continuer avec le reste du traitement
-                if (exists) {
+                if (annotated) {
                     if (window.confirm(`L'épisode en cours d'analyse est déjà annoté dans la base de données ; confirmer la nouvelle entrée?`)) {
                         await processDiagnosis(diag, metadata);
                         console.log("resolving episode already in database")

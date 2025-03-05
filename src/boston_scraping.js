@@ -7,11 +7,14 @@ console.log('boston_scraping.js script initialized...');
 console.log("API URL:", process.env.API_URL);
 const API_URL = process.env.API_URL;
 
-let batchProcessing = false;
+let isBatch = false;
 let labels = [];
+
 
 window.addEventListener("load", async () => {
     try {
+        document.addEventListener("close_overlay", () => closeOverlay());
+        document.addEventListener("stop_batch", () => isBatch = false);
         console.log("Window loaded, starting script...");
         const access_token = await authenticateUser();
 
@@ -93,13 +96,15 @@ window.addEventListener("load", async () => {
             console.log("setting up the listeners...");
             await setupListeners(dataTable);
             console.log("Showing confirmation dialog");
-            const userResponse = window.confirm("Voulez-vous commencer l'analyse de tous les tracés?");
-            if (userResponse) {
+            const episodeResponse = window.confirm("Voulez-vous commencer l'analyse de tous les tracés?");
+            if (episodeResponse) {
+                isBatch = true;
                 // getting all the links to the EGMs
                 const egmLinks = document.querySelectorAll(".trueEgmIcon");
                 console.log("Starting batch processing");
                 handleBatchAnalysis(egmLinks, dataTable);
             } else {
+                isBatch = false;
                 console.log("Batch processing cancelled by user");
             }
         }, 100);
@@ -109,7 +114,7 @@ window.addEventListener("load", async () => {
     }
 });
 
-document.addEventListener("close_overlay", () => closeOverlay());
+
 
 async function setupListeners(dataTable) {
     console.log("Setting up listeners");
@@ -136,7 +141,7 @@ async function setupListeners(dataTable) {
             if (metadata) {
                 console.log("Metadata found:", metadata);
                 try {
-                    await handleEpisodeClick(metadata, true);
+                    await handleEpisodeClick(metadata, isBatch);
                 } catch (error) {
                     console.error("Error in handleEpisodeClick:", error);
                 }
@@ -149,9 +154,12 @@ async function setupListeners(dataTable) {
     });
 }
 
-async function handleEpisodeClick(metadata) {
+async function handleEpisodeClick(metadata, isBatch) {
     return new Promise(async(resolve) => {
         try {
+            console.log("isBatch:", isBatch);
+            console.log("Handling episode click:", metadata);
+            console.log("injecting overlay");
             // 1) Injecter l'overlay
             await injectGenericHTML("overlay-container");
             // 2) Préparer un observer pour capter l'insertion du SVG
@@ -181,9 +189,11 @@ async function handleEpisodeClick(metadata) {
                         console.log("Episode created:", uploadPromise);
 
                         await processViewerEpisode(metadata, labels[metadata.episodeType], uploadPromise);
-
-                        closeOverlay();
                         console.log("Episode processed successfully (handleEpisodeClick).");
+                        if(!isBatch){
+                            const event = new Event("close_overlay");
+                            document.dispatchEvent(event);
+                        }
                         resolve();
                     } catch (error) {
                         console.error("Erreur lors du traitement du SVG:", error);
@@ -201,10 +211,11 @@ async function handleEpisodeClick(metadata) {
 
 
 
-async function handleBatchAnalysis(egmLinks, dataTable) {
+async function handleBatchAnalysis(egmLinks, dataTable, isBatch) {
     console.log("Starting batch analysis...");
 
     for (let i = 0; i < egmLinks.length; i++) {
+        console.log("egm links number:", egmLinks.length);
         const link = egmLinks[i];
         link.click();
         console.log(`Link n°${i+1}:`, link);
@@ -216,14 +227,23 @@ async function handleBatchAnalysis(egmLinks, dataTable) {
             continue;
         }
 
-        const episodePromise = handleEpisodeClick(metadata, false);
-        console.log("Episode promise:", episodePromise);
-        await episodePromise;
+        await handleEpisodeClick(metadata, isBatch);
         
         // Une fois fini, on passe au suivant
         console.log(`Episode ${i+1} OK, next...`);
 
+        if(i === egmLinks.length - 1) {
+            console.log("All episodes processed.");
+            batchProcessing = false;
+            const event = new Event("close_overlay");
+            const stopBatch = new Event("stop_batch");
+            document.dispatchEvent(event);
+            document.dispatchEvent(stopBatch);
+        }
+
     }
+
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     console.log("Batch processing complete.");
 }
@@ -299,7 +319,7 @@ async function processEpisode(metadata, files) {
     }
 }
 
-function closeOverlay() {
+async function closeOverlay() {
     const closeButton = document.querySelector("body > div.ui-dialog.ui-corner-all.ui-widget.ui-widget-content.ui-front > div.ui-dialog-titlebar.ui-corner-all.ui-widget-header.ui-helper-clearfix > button");
     if (closeButton) {
         closeButton.click();

@@ -114,8 +114,12 @@ export async function uint8ArrayToBase64(uint8Array) {
 }
 
 export async function processViewerEpisode(metadata, labels, uploadPromise) {
+    const initialTime = Date.now();
     const pdf_viewer = document.querySelector(".popup-label-buttons");
-    pdf_viewer.innerHTML = "";
+    if(!pdf_viewer) {
+        console.warn("Popup container not found.");
+    } else {
+        pdf_viewer.innerHTML = "";
 
     console.log("Metadata in processViewerEpisode:", metadata);
     console.log("Labels in processViewerEpisode:", labels);
@@ -180,20 +184,59 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
                     if (window.confirm(`L'épisode en cours d'analyse est déjà annoté dans la base de données ; confirmer la nouvelle entrée?`)) {
                         await processDiagnosis(diag, metadata);
                         console.log("resolving episode already in database")
+                        const endTime = Date.now();
+                        console.log("episode treated in", endTime - initialTime, "ms");
+                        const formData = new URLSearchParams();
+                        formData.append("episode_id", metadata.episodeId);
+                        formData.append("processing_time", endTime - initialTime);
+                        const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
+                            body: formData.toString()
+                        });
                         resolve(metadata);
                     } else {
                         console.log("episode already in database, resolving without annotation")
+                        const endTime = Date.now();
+                        console.log("episode treated in", endTime - initialTime, "ms");
+                        const formData = new URLSearchParams();
+                        formData.append("episode_id", metadata.episodeId);
+                        formData.append("processing_time", endTime - initialTime);
+                        const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
+                            body: formData.toString()
+                        });
                         resolve(metadata);
                     }
                 } else {
                     await processDiagnosis(diag, metadata);
                     console.log("resolving episode not in database")
+                    const endTime = Date.now();
+                    console.log("episode treated in", endTime - initialTime, "ms");
+                    const formData = new URLSearchParams();
+                    formData.append("episode_id", metadata.episodeId);
+                    formData.append("processing_time", endTime - initialTime);
+                    const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: formData.toString()
+                    });
                     resolve(metadata);
                 }
 
                 cleanAllButtons();
-                document.querySelector("#option-1").checked = false;
-                document.querySelector("#option-2").checked = true;
+                const opt1 = document.querySelector("#option-1");
+                const opt2 = document.querySelector("#option-2");
+                
+                if (opt1) opt1.checked = false;
+                if (opt2) opt2.checked = true;
             } catch (error) {
                 console.error("Error processing annotation:", error);
                 reject(error);
@@ -211,6 +254,18 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
             document.querySelector("#option-1").checked = false;
             document.querySelector("#option-2").checked = true;
             console.log("resolving skip button")
+            const endTime = Date.now();
+            console.log("episode treated in", endTime - initialTime, "ms");
+            const formData = new URLSearchParams();
+            formData.append("episode_id", metadata.episodeId);
+            formData.append("processing_time", endTime - initialTime);
+            const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: formData.toString()
+            });
             resolve(metadata);
         });
 
@@ -234,16 +289,22 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
             }
         };
     });
-
-    console.log("End of processViewerEpisode, auto-resolving promise");
+    }
 }
 
 async function checkJobStatus(uploadPromise) {
-
     const aiSelector = document.querySelector(".ai-field-value");
 
     try {
-        uploadPromise.then(async ({ ai_client, jobs }) => {
+        uploadPromise.then(async ({ ai_clients, jobs }) => {
+            if (!jobs || jobs.length === 0) {
+                console.log("✅ Aucun job IA en attente, résolution immédiate.");
+                aiSelector.innerHTML = "✅ Aucun travail IA en attente.";
+                return;  // Sortie immédiate
+            }
+
+            console.log(`🔄 Vérification de ${jobs.length} jobs en cours...`);
+
             const fetchJobData = async (job) => {
                 try {
                     const response = await authenticatedFetch(`${API_URL}/ai/jobs?job_id=${job}`, {
@@ -254,53 +315,52 @@ async function checkJobStatus(uploadPromise) {
                     });
                     return await response.json();
                 } catch (error) {
-                    console.error("Failed to fetch job data:", error);
+                    console.error("❌ Échec de la récupération du job:", error);
                     return null;
                 }
             };
-    
+
             const updateJobElements = async () => {
-                let remainingJobs = [...jobs];  // Copie des jobs pour éviter de modifier l'original
+                let remainingJobs = [...jobs];  // Copie pour éviter toute modification accidentelle
                 const job_number = jobs.length;
-                const startTime = Date.now();   // Stocker le temps de début
+                const startTime = Date.now();   // Temps de début de la vérification
             
                 while (remainingJobs.length > 0) {
-                    // Vérifier si le timeout de 10 secondes est atteint
+                    // 🔴 Vérifier si le timeout de 10 secondes est atteint
                     if (Date.now() - startTime >= 10000) { 
                         console.warn("⏳ Timeout atteint (10s) : Arrêt des requêtes IA.");
                         aiSelector.innerHTML = "⏳ Temps d'attente dépassé. Vérifiez les résultats manuellement.";
-                        break;  // Arrêter la boucle
+                        break;
                     }
             
                     let completedCount = 0;
-            
+
+                    // ✅ Vérification de l'état des jobs
                     for (const job of remainingJobs) {
                         const data = await fetchJobData(job);
-            
                         if (data && data.status === "completed") {
                             completedCount++;
                         }
                     }
             
                     const pendingCount = job_number - completedCount;
-                    aiSelector.innerHTML = `${pendingCount} travaux IA en cours`;
-            
+                    aiSelector.innerHTML = `${pendingCount} travaux IA en cours...`;
+
                     if (pendingCount === 0) {
                         aiSelector.innerHTML = "✅ Tous les travaux IA sont terminés";
-                        break;  // Arrêter la boucle
+                        break;
                     }
             
-                    await new Promise(resolve => setTimeout(() => {
-                        console.log("resolving in job check")
-                        resolve();
-                    }, 1000)); // Pause avant le prochain check
+                    // Pause avant la prochaine vérification
+                    await new Promise(resolve => setTimeout(resolve, 1000)); 
                 }
             };
+
             await updateJobElements();
         });
-    } catch(error) {
-        console.error("Error in checkJobStatus:", error);
-        throw new Error("Failed to check job status");
+    } catch (error) {
+        console.error("⚠️ Erreur dans checkJobStatus:", error);
+        throw new Error("Échec de la vérification du statut des jobs IA");
     }   
 }
 
@@ -386,8 +446,10 @@ function addListenersToPopup(htmlname) {
         console.log("close button clicked");
         //créer un custom event "close overlay"
         const closeEvent = new CustomEvent("close_overlay");
+        const stopBatch = new CustomEvent("stop_batch");
         document.dispatchEvent(closeEvent);
     })
+
 
     document.body.onkeydown = function (e) {
         let keyCode = e.keyCode;

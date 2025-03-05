@@ -3,7 +3,6 @@ import { ageAtEpisode } from "./data_formatting";
 import { authenticateUser, authenticatedFetch } from "./auth";
 
 console.log("biotronik_scraping.js script initialized");
-
 console.log("API URL:", process.env.API_URL);
 const API_URL = process.env.API_URL;
 
@@ -23,6 +22,7 @@ async function initializeScript() {
         const allLabelsResponse = await authenticatedFetch(`${API_URL}/episode/diagnoses_labels/Biotronik`);
         const allLabels = await allLabelsResponse.json();
         const labels = allLabels.labels;    
+        console.log("Labels:", labels);
         document.addEventListener("close_overlay", () => closeOverlay());
 
         const patientName = document.querySelector("#DisplayEpisode\\:headerPatientName").textContent;
@@ -73,6 +73,8 @@ async function initializeScript() {
         console.log("Encrypted metadata:", metadata);
 
         const uploadEpisode = processEpisode(metadata);
+
+        console.log("labels for episode", labels[metadata.episodeType]);
 
         try {
             await processViewerEpisode(metadata, labels[metadata.episodeType], uploadEpisode);

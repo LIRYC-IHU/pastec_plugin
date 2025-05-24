@@ -1,6 +1,15 @@
 document.addEventListener('DOMContentLoaded', async() => {
     console.log("popup.js script initialized");
     const objectArray = await chrome.storage.local.get("alertArray");
+    const aiCheckState = await chrome.storage.local.get("aiCheck");
+    console.log(`${aiCheckState.aiCheck} upon loading popup`);
+    const aiCheck = document.querySelector("#ai-check");
+    if (aiCheckState.aiCheck === undefined) {
+        aiCheck.checked = false;
+        await chrome.storage.local.set({ "aiCheck": false });
+    } else {
+        aiCheck.checked = aiCheckState.aiCheck;
+    }
     const alertArray = objectArray.alertArray;
 
     console.log(typeof(alertArray));
@@ -23,6 +32,12 @@ document.addEventListener('DOMContentLoaded', async() => {
                 document.querySelector("#text").textContent = `0 alertes sont en attente de visualisation`;
             });
         }
+    });
+
+    aiCheck.addEventListener('change', async() => {
+        const isChecked = aiCheck.checked;
+        await chrome.storage.local.set({ "aiCheck": isChecked });
+        console.log(`AI check set to: ${isChecked}`);
     });
 })
 
@@ -49,4 +64,5 @@ function openMailto(email) {
     const body = encodeURIComponent("[Veuillez faire CRTL+V pour coller le contenu]");
     window.open(`mailto:${email}?subject=${subject}&body=${body}`);
 }
+
 

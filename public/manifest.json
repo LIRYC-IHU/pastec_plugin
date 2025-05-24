@@ -6,13 +6,8 @@
     "permissions": [
         "activeTab",
         "storage",
-        "scripting",
         "tabs",
-        "webNavigation",
         "webRequest",
-        "declarativeNetRequest",
-        "declarativeNetRequestFeedback",
-        "downloads",
         "cookies"
       ],
     "host_permissions": [

@@ -177,7 +177,6 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
 
                 const annotationResult = await response.json();
                 console.log("Annotation added successfully:", annotationResult);
-                console.log("is annotated", exists);
 
                 // Continuer avec le reste du traitement
                 if (annotated) {
@@ -324,6 +323,7 @@ async function checkJobStatus(uploadPromise) {
                 let remainingJobs = [...jobs];  // Copie pour éviter toute modification accidentelle
                 const job_number = jobs.length;
                 const startTime = Date.now();   // Temps de début de la vérification
+                let aiResults = {};
             
                 while (remainingJobs.length > 0) {
                     // 🔴 Vérifier si le timeout de 10 secondes est atteint
@@ -340,6 +340,8 @@ async function checkJobStatus(uploadPromise) {
                         const data = await fetchJobData(job);
                         if (data && data.status === "completed") {
                             completedCount++;
+                            console.log(`✅ Job ${job} terminé.`);
+                            aiResults[data.id_model] = data.job_annotation;
                         }
                     }
             
@@ -347,7 +349,23 @@ async function checkJobStatus(uploadPromise) {
                     aiSelector.innerHTML = `${pendingCount} travaux IA en cours...`;
 
                     if (pendingCount === 0) {
-                        aiSelector.innerHTML = "✅ Tous les travaux IA sont terminés";
+                        // afficher les résultats si ai-toggle est coché et que les jobs sont terminés
+                        const aiCheck = await chrome.storage.local.get("aiCheck");
+                        console.log("AI check status:", aiCheck);
+                        if (aiCheck.aiCheck) {
+                            console.log("AI check is enabled, displaying results");
+                            aiSelector.innerHTML = "✅ Tous les travaux IA sont terminés";
+                            for (const [model, result] of Object.entries(aiResults)) {
+                                const resultDiv = document.createElement("div");
+                                resultDiv.className = "ai-result";
+                                resultDiv.innerHTML = `<strong>${model}:</strong> ${result}`;
+                                aiSelector.appendChild(resultDiv);
+                            }
+                        } else {
+                            console.log("AI check is disabled, not displaying results");
+                            aiSelector.innerHTML = "✅ Tous les travaux IA sont terminés";
+                        }
+
                         break;
                     }
             

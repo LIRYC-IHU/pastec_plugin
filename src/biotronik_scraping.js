@@ -186,6 +186,7 @@ async function processEpisode(metadata) {
 
         const responseData = await response.json();
         console.log("Response data from upload_episode:", responseData);
+        console.log("responsedata annotation", responseData.annotated);
 
         // Labels disponibles dans `responseData`
         const labels = responseData.labels;
@@ -197,7 +198,9 @@ async function processEpisode(metadata) {
             return {
                 labels,
                 ai_clients: responseData.ai_clients || [],
-                jobs: responseData.jobs || []
+                jobs: responseData.jobs || [],
+                exists: true,
+                annotated: responseData.annotated
             };
         } else {
             const svgBlob = await getSVGBlob();
@@ -231,7 +234,9 @@ async function processEpisode(metadata) {
             return {
                 labels,
                 ai_clients: egmData.ai_clients || [],
-                jobs: egmData.jobs || []
+                jobs: egmData.jobs || [],
+                exists: false,
+                annotated: false
             };
         }
     } catch (error) {

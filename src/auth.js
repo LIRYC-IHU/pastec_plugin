@@ -31,7 +31,7 @@ export async function authenticateUser() {
         localStorage.setItem("token", data.access_token);
         localStorage.setItem("refresh_token", data.refresh_token);
         localStorage.setItem("expiry_time", Date.now() + data.expires_in * 1000);
-        return data;
+        return data.access_token;
     } catch (error) {
         console.error("Error during authentication:", error);
         throw error;

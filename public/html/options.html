@@ -20,20 +20,26 @@
         <p></p>
         <label for="url">Nom de domaine (ne pas modifier)</label>
         <p></p>
-        <input type="text" id="url" class="text-field" name="url" value="https://pastec.ihu-liryc.fr"/>
+        <input type="text" id="url" class="text-field" name="url" style="background-color: lightgrey" value="https://pastec.ihu-liryc.fr"/>
+        <p></p>
+        <p></p>
+        <input type="password" id="pepper" class="text-field" style="background-color: lightgrey" name="pepper" placeholder="Code centre (ne pas communiquer)" readonly/>
+        <p></p>
+        <label for="pepper-file">Importer code (.txt)</label>
+        <input type="file" id="pepper-file" accept=".txt"/>
         <p></p>
         <p></p>
         <a href="https://pastec.ihu-liryc.fr/auth/realms/pastec/protocol/openid-connect/auth?client_id=pastec_server&response_type=code&redirect_uri=https://pastec.ihu-liryc.fr/users/callback&scope=openid%20profile%20email">Première connexion - Cliquer ici</a>
         <p></p>
         <p></p>
+
     </div>
 
     <div id="submit">
-        <button id="submit-button" class="label-button">Soumettre</button>
+        <button id="submit-button" class="label-button" disabled="true">Soumettre</button>
         <p></p>
         <p></p>
-        <p id="auth-success" style= "display:none">Authentification réussie</p>
-        <p id="auth-failure" style="display:none">Erreur: mot de passe et/ou identifiant incorrect(s)</p>
+        <p id="auth-status"></p>
     </div>
 </body>
 <script src="options.js"></script>

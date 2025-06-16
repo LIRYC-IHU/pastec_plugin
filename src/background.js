@@ -1,5 +1,5 @@
 import * as pdflib from "pdf-lib";
-import * as cryptoJS from "crypto-js";
+import * as CryptoJS from "crypto-js";
 import * as JSZip from "jszip";
 import { uint8ArrayToBase64, convertDurationToSeconds } from "./content";
 
@@ -15,9 +15,15 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "encrypt patient data") {
         console.log("Encrypting patient data in the background");
-        const { patientId, episodeId } = encryptData(message.episode_info);
-        sendResponse({ patientId: patientId, episodeId: episodeId });
-        return true;
+        encryptData(message.episode_info).then(({ patientId, episodeId }) => {;
+            console.log("Patient ID:", patientId);
+            console.log("Episode ID:", episodeId);
+            sendResponse({ patientId: patientId, episodeId: episodeId });
+        }).catch((error) => {
+            console.error("Error encrypting patient data: ", error);
+            sendResponse({ status: "error", message: "Failed to encrypt patient data", error: error.message || error.toString() });
+        });
+        return true; // Indicate that the response will be sent asynchronously
     }
     if(message.action === "get episode diagnosis") {
         console.log("get episode diagnosis message received");
@@ -240,33 +246,30 @@ async function compressImagesToZip(imagesArray) {
     return zipFile;
 }
 
-function encryptData(episode_info) {
-    console.log("Encrypting episode info:", episode_info);
-    
-    // Vérifier que toutes les données nécessaires sont présentes
-    if (!episode_info.patient_id || !episode_info.system || !episode_info.episode_type || !episode_info.date || !episode_info.time) {
-        console.error("Missing required data for encryption");
-        return null;
-    }
-    
-    // Créer une chaîne unique pour l'épisode
-    const episodeString = `${episode_info.patient_id}_${episode_info.system}_${episode_info.episode_type}_${episode_info.date}_${episode_info.time}`;
-    
-    // Générer l'episodeId
-    const episodeId = cryptoJS.SHA256(episodeString).toString();
-    
-    // Générer le patientId crypté
-    const patientId = cryptoJS.SHA256(episode_info.patient_id).toString();
-    
-    console.log("Generated IDs:", {
-        patientId: patientId,
-        episodeId: episodeId
-    });
-    
-    return {
-        patientId: patientId,
-        episodeId: episodeId
-    };
+async function encryptData(episode_info) {
+  // Récupérer le pepper sous forme de chaîne hex
+  const { pepper } = await chrome.storage.local.get("pepper");
+  if (typeof pepper !== "string" || !/^[0-9a-fA-F]{64}$/.test(pepper)) {
+    throw new Error("Pepper invalide ou absent : must be 64 hex chars");
+  }
+
+  // Convertir en WordArray CryptoJS
+  const pepperWA = CryptoJS.enc.Hex.parse(pepper);
+
+  // Vérifier les champs obligatoires
+  const { patient_id, system, episode_type, date, time } = episode_info;
+  if (!patient_id || !system || !episode_type || !date || !time) {
+    throw new Error("Données manquantes pour le chiffrement");
+  }
+
+  // Construire la chaîne épisode
+  const episodeString = `${patient_id}_${system}_${episode_type}_${date}_${time}`;
+
+  // HMAC pour episodeId et patientId
+  const episodeId = CryptoJS.HmacSHA256(episodeString, pepperWA).toString();
+  const patientId = CryptoJS.HmacSHA256(patient_id, pepperWA).toString();
+
+  return { patientId, episodeId };
 }
 
 async function getCredentials(name, password) {

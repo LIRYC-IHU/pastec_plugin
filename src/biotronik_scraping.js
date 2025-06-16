@@ -25,24 +25,97 @@ async function initializeScript() {
         console.log("Labels:", labels);
         document.addEventListener("close_overlay", () => closeOverlay());
 
-        const patientName = document.querySelector("#DisplayEpisode\\:headerPatientName").textContent;
-        const implantSerial = document.querySelector("#DisplayEpisode\\:headerImplantSN").textContent;
-        const birthdate = document.querySelector("#DisplayEpisode\\:headerPatientDateOfBirth").textContent;
-        catchPrintButton();
+        console.log("Fetching patient data...");
 
+        // --- 1. Helpers ----------------------------------------------------------------
+        const safeText = (selector, label) => {
+        const el = document.querySelector(selector);
+        if (!el) {
+            console.warn(`[Scraper] Élément manquant : ${label} (${selector})`);
+            return null;
+        }
+        return el.textContent?.trim() ?? null;
+        };
+
+        const safeData = (selector, label) => {
+        const obj = document.querySelector(selector);
+        if (!obj) {
+            console.warn(`[Scraper] Élément manquant : ${label} (${selector})`);
+            return null;
+        }
+        return obj.data ?? null;
+        };
+
+        // --- 2. Collecte ----------------------------------------------------------------
         let scrapedData = {
-            patientName:  patientName,
-            implantSerial: implantSerial,
-            implantModel: document.querySelector("#DisplayEpisode\\:headerImplantName").textContent,
-            episodeDate: document.querySelector("#reportData1 > tbody > tr:nth-child(4) > td.Value").textContent,
-            episodeType: document.querySelector("#reportData1 > tbody > tr:nth-child(3) > td.Value").textContent,
-            episodeDuration: convertDurationToSeconds(document.querySelector("#reportData1 > tbody > tr:nth-child(6) > td.Value").textContent, "Biotronik"),
-            system: 'Biotronik',
-            url: window.location.href,
-            svgElement: document.querySelector("#DisplayEpisode > table > tbody > tr:nth-child(2) > td > table > tbody > tr:nth-child(1) > td.RightColumn > table > tbody > tr > td.Content > table.ChartData > tbody > tr:nth-child(2) > td > object").data
-        }; 
+            patientName    : null,
+            birthdate      : null,
+            implantSerial  : null,
+            implantModel   : null,
+            episodeDate    : null,
+            episodeType    : null,
+            episodeDuration: null,
+            system         : 'Biotronik',
+            url            : window.location.href,
+            svgElement     : null
+        };
 
-        console.log("Scraped data:", scrapedData);
+        try {
+            scrapedData.patientName   = safeText("#DisplayEpisode\\:headerPatientName", "patientName");
+            scrapedData.implantSerial = safeText("#DisplayEpisode\\:headerImplantSN",    "implantSerial");
+            scrapedData.implantModel  = safeText("#DisplayEpisode\\:headerImplantName",  "implantModel");
+
+            scrapedData.episodeDate = safeText(
+                "#reportData1 > tbody > tr:nth-child(4) > td.Value",
+                "episodeDate"
+            );
+            scrapedData.episodeType = safeText(
+                "#reportData1 > tbody > tr:nth-child(3) > td.Value",
+                "episodeType"
+            );
+              scrapedData.birthdate = safeText(                
+                "#DisplayEpisode\\:headerPatientDateOfBirth",
+                "birthdate"
+            );
+            const durationTxt = safeText(
+                "#reportData1 > tbody > tr:nth-child(6) > td.Value",
+                "episodeDuration(raw)"
+            );
+            scrapedData.episodeDuration = durationTxt
+                ? convertDurationToSeconds(durationTxt, "Biotronik")
+                : 0;
+
+            scrapedData.svgElement = safeData(
+                "#DisplayEpisode > table > tbody > tr:nth-child(2) > td > table > tbody > tr:nth-child(1) > td.RightColumn > table > tbody > tr > td.Content > table.ChartData > tbody > tr:nth-child(2) > td > object",
+                "svgElement"
+            );
+
+            // --- 3. Vérification / log ---------------------------------------------------
+            const missing = Object.entries(scrapedData)
+                                    .filter(([_, v]) => v === null)
+                                    .map(([k]) => k);
+
+            if (missing.length) {
+                console.error(`[Scraper] Champs non récupérés : ${missing.join(", ")}`);
+                // Lever l'erreur seulement si c'est bloquant
+                window.alert(`Certaines données patient sont manquantes ; ${missing.join(", ")}: impossible de continuer`);
+                throw new Error("Certaines données patient sont manquantes ; voir la console pour le détail.");
+            }
+
+            console.info("[Scraper] Données patient récupérées :", scrapedData);
+
+        } catch (err) {
+            console.error("[Scraper] Échec de récupération des données :", err.message);
+            console.debug("[Scraper] État partiel :", scrapedData);
+            // Propager si besoin
+            throw err;
+        }
+
+
+
+
+
+        catchPrintButton();
 
         await injectGenericHTML('overlay-container');
         console.log("Encrypting data for episode:", scrapedData);
@@ -62,7 +135,7 @@ async function initializeScript() {
             implantSerial: scrapedData.implantSerial,
             implantModel: scrapedData.implantModel,
             episodeDate: scrapedData.episodeDate,
-            birthdate: birthdate,
+            birthdate: scrapedData.birthdate,
             episodeType: scrapedData.episodeType,
             episodeDuration: scrapedData.episodeDuration,
             system: scrapedData.system,
@@ -173,9 +246,20 @@ async function processEpisode(metadata) {
         formData.append("patient_id", metadata.patientId);
         formData.append("manufacturer", metadata.system.toLowerCase());
         formData.append("episode_type", metadata.episodeType);
+        formData.append("implant_model", metadata.implantModel);
         formData.append("age_at_episode", ageAtEpisode(metadata.episodeDate, metadata.birthdate) || 0);
         formData.append("episode_duration", metadata.episodeDuration.toString());
         formData.append("episode_id", metadata.episodeId);
+
+        console.log("FormData prepared for upload:", formData
+            , "\nPatient ID:", metadata.patientId,
+            "\nManufacturer:", metadata.system.toLowerCase(),
+            "\nEpisode Type:", metadata.episodeType,
+            "\nImplant Model:", metadata.implantModel,
+            "\nAge at Episode:", ageAtEpisode(metadata.episodeDate, metadata.birthdate) || 0,
+            "\nEpisode Duration:", metadata.episodeDuration.toString(),
+            "\nEpisode ID:", metadata.episodeId
+        );
 
         // Étape 1 : Appel à `upload_episode`
         console.log("Uploading episode metadata...");

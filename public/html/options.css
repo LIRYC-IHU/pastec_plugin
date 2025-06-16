@@ -38,13 +38,31 @@ body{
     font-size: 0.9rem;
     font-weight: var(--font-medium); 
     height: 2rem; 
-    width: 40%; ;
+    width: 30%; ;
     justify-content: space-evenly; 
     background-color: whitesmoke;
     border: 1px solid grey;
     border-radius: 0.5rem;
     padding: 1rem 1rem;
     margin: 0 auto; /* Ajouté pour centrer les boutons */
+}
+
+.label-button:hover{
+    transition: all 0.3s ease;
+    transform: translateY(-0.1rem);
+    align-items: center;
+    background: none;
+    background-image: none;
+    background-color: var(--clear-green);
+    border-radius: .5rem;
+    box-shadow: inset;
+    color: whitesmoke;
+}
+
+.label-button:disabled{
+    background-color: grey;
+    color: whitesmoke;
+    cursor: not-allowed;
 }
 
 .ai-field

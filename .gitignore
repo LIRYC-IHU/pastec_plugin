@@ -3,7 +3,8 @@ dist/
 downloaded_files/
 .DS_Store
 ec2-user@51.20.129.165
-*.crx
-*.pem
+**.crx
+**.pem
+**.zip
 
 

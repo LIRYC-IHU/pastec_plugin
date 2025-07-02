@@ -114,12 +114,24 @@ export async function uint8ArrayToBase64(uint8Array) {
 }
 
 export async function processViewerEpisode(metadata, labels, uploadPromise) {
+
     const initialTime = Date.now();
+
+    const { isHidden } = await chrome.storage.local.get("isHidden");
+    console.log("isHidden state:", !isHidden);
+    if (!isHidden) {
+        console.log("Overlay is hidden, not displaying.");
+        const overlay = document.getElementById("overlay-container");
+        overlay.style.setProperty("display", "none", "important");
+    }
+
+
     const pdf_viewer = document.querySelector(".popup-label-buttons");
     if(!pdf_viewer) {
         console.warn("Popup container not found.");
     } else {
         pdf_viewer.innerHTML = "";
+    }
 
     console.log("Metadata in processViewerEpisode:", metadata);
     console.log("Labels in processViewerEpisode:", labels);
@@ -135,6 +147,7 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
     const aiSelector = document.querySelector(".ai-field-value");
 
     return new Promise(async (resolve, reject) => {
+
     // populate the overlay with the buttons
         console.log("Diagnostic choices:", labels);
         labels.forEach((diag, index) => {
@@ -188,6 +201,7 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
                         const formData = new URLSearchParams();
                         formData.append("episode_id", metadata.episodeId);
                         formData.append("processing_time", endTime - initialTime);
+                        formData.append("annotation", diag);
                         const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
                             method: 'POST',
                             headers: {
@@ -203,6 +217,7 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
                         const formData = new URLSearchParams();
                         formData.append("episode_id", metadata.episodeId);
                         formData.append("processing_time", endTime - initialTime);
+                        formData.append("annotation", "none");
                         const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
                             method: 'POST',
                             headers: {
@@ -220,6 +235,7 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
                     const formData = new URLSearchParams();
                     formData.append("episode_id", metadata.episodeId);
                     formData.append("processing_time", endTime - initialTime);
+                    formData.append("annotation", "none");
                     const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
                         method: 'POST',
                         headers: {
@@ -258,6 +274,7 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
             const formData = new URLSearchParams();
             formData.append("episode_id", metadata.episodeId);
             formData.append("processing_time", endTime - initialTime);
+            formData.append("annotation", "none");
             const processingPromise = authenticatedFetch(`${API_URL}/episode/processing_time`, {
                 method: 'POST',
                 headers: {
@@ -289,7 +306,6 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
         };
     });
     }
-}
 
 async function checkJobStatus(uploadPromise) {
     const aiSelector = document.querySelector(".ai-field-value");

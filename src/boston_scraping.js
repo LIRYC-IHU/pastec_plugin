@@ -209,8 +209,6 @@ async function handleEpisodeClick(metadata, isBatch) {
     });
 }
 
-
-
 async function handleBatchAnalysis(egmLinks, dataTable, isBatch) {
     console.log("Starting batch analysis...");
 
@@ -255,6 +253,7 @@ async function processEpisode(metadata, files) {
         const formData = new FormData();
         formData.append("patient_id", metadata.patientId);
         formData.append("manufacturer", metadata.system.toLowerCase());
+        formData.append("implant_model", metadata.implantModel);
         formData.append("episode_type", metadata.episodeType);
         formData.append("age_at_episode", ageAtEpisode(metadata.episodeDate, metadata.birthdate) || 0);
         formData.append("episode_duration", metadata.duration.toString());

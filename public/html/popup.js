@@ -2,6 +2,10 @@ document.addEventListener('DOMContentLoaded', async() => {
     console.log("popup.js script initialized");
     const objectArray = await chrome.storage.local.get("alertArray");
     const aiCheckState = await chrome.storage.local.get("aiCheck");
+    const isHiddenState = await chrome.storage.local.get("isHidden");
+
+    console.log('isHiddenState:', isHiddenState.isHidden);
+
     console.log(`${aiCheckState.aiCheck} upon loading popup`);
     const aiCheck = document.querySelector("#ai-check");
     if (aiCheckState.aiCheck === undefined) {
@@ -9,6 +13,15 @@ document.addEventListener('DOMContentLoaded', async() => {
         await chrome.storage.local.set({ "aiCheck": false });
     } else {
         aiCheck.checked = aiCheckState.aiCheck;
+    }
+
+    const isHiddenCheck = document.querySelector("#overlay-check");
+    if (isHiddenState.isHidden === undefined) {
+        console.log("isHiddenState is undefined, setting to false");
+        isHiddenCheck.checked = false;
+        await chrome.storage.local.set({ "isHidden": false });
+    } else {
+        isHiddenCheck.checked = isHiddenState.isHidden;
     }
     const alertArray = objectArray.alertArray;
 
@@ -38,6 +51,12 @@ document.addEventListener('DOMContentLoaded', async() => {
         const isChecked = aiCheck.checked;
         await chrome.storage.local.set({ "aiCheck": isChecked });
         console.log(`AI check set to: ${isChecked}`);
+    });
+
+    isHiddenCheck.addEventListener('change', async() => {
+        const isChecked = isHiddenCheck.checked;
+        await chrome.storage.local.set({ "isHidden": isChecked });
+        console.log(`Hidden check set to: ${isChecked}`);
     });
 })
 

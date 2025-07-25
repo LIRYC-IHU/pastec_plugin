@@ -1,0 +1,11 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "https://api-nl-prod.medtroniccarelink.net/CareLink.API.Service/api/documents/",
+      "requestMethods": ["GET"]
+    }
+  }
+]

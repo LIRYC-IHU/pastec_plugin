@@ -2,17 +2,28 @@
     "manifest_version": 3,
     "name": "PASTEC Plugin",
     "description": "A simple plugin to download and annotate remote monitoring EGMs",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "permissions": [
         "activeTab",
         "storage",
         "tabs",
         "webRequest",
+        "declarativeNetRequest",
+        "declarativeNetRequestFeedback",
         "cookies"
       ],
     "host_permissions": [
-      "https://pastec.ihu-liryc.fr/*"
+      "https://pastec.ihu-liryc.fr/*",
+      "https://world.medtroniccarelink.net/*",
+      "https://api-nl-prod.medtroniccarelink.net/*"
     ],
+    "declarative_net_request": {
+      "rule_resources": [{
+        "id": "blockDocs2",
+        "enabled": true,
+        "path": "rules_1.json"
+      }]
+    },
     "background": {
       "service_worker": "background.js",
       "type": "module"
@@ -29,6 +40,13 @@
         "js": ["content.js", "boston_scraping.js"],
         "css": ["css/overlay-container.css"],
         "run_at": "document_start"
+      },
+      {
+        "matches": ["https://world.medtroniccarelink.net/*"],
+        "js": ["content.js", "medtronic_scraping.js"],
+        "css": ["css/pdf-viewer.css"],
+        "run_at": "document_idle",
+        "all_frames": true
       }
   ],
   "web_accessible_resources": [

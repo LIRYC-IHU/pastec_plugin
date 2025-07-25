@@ -12,6 +12,16 @@ chrome.runtime.onInstalled.addListener((details) => {
     }
 });
 
+// background.js
+chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
+  console.log("✋ rule matched!", info);
+});
+
+// (optional) inspect which rulesets are enabled
+chrome.declarativeNetRequest.getEnabledRulesets(sets => {
+  console.log("Enabled rulesets:", sets);
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "encrypt patient data") {
         console.log("Encrypting patient data in the background");
@@ -379,49 +389,6 @@ async function saveUserAnnotation(bearer, metadata) {
         return error;
     }
 
-}
-
-async function handleEpisodeInfo(metadata) {
-
-    console.log("getting episode info from api...");
-
-    console.log(metadata)
-
-    const bearer = await getCredentials('jtoucoula', 'admin');
-
-    const myHeaders = new Headers({
-        "Accept": "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": `Bearer ${bearer.access_token}`
-    });
-
-    const formData = new URLSearchParams();
-    formData.append("system", metadata.system);
-    formData.append("patientId", metadata.patientId);
-    formData.append("episodeId", metadata.episodeId);
-    formData.append("eventType", metadata.episodeType);
-
-    console.log("Fetching episode info");
-
-    console.log("system", metadata.system);
-    console.log("patientId", metadata.patientId);
-    console.log("episodeId", metadata.episodeId);
-    console.log("eventType", metadata.episodeType);
-
-    try {
-        const response = await fetch("http://musicp.chu-bordeaux.fr:9000/api/upload/episode_info", {
-            method: "POST",
-            headers: myHeaders,
-            body: formData
-        });
-        if (!response.ok) {
-            console.log("response is not ok");
-            return await response.json();  // Make sure to await the text
-        }
-        return await response.json();
-    } catch (error) {
-        console.error("Error fetching episode information: ", error);
-    }
 }
 
 async function getAnnotation(metadata) {

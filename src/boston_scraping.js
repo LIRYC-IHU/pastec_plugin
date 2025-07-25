@@ -274,21 +274,22 @@ async function processEpisode(metadata, files) {
         // Labels disponibles dans `responseData`
         const labels = responseData.labels;
 
-        // Étape 2 : Vérifiez si l'épisode existe
-        if (responseData.exists) {
-            // L'épisode existe, récupérez directement les modèles IA et les jobs
-            console.log("Episode exists. Using response data...");
+        // Étape 2 : Vérifiez si l'épisode existe et si l'EGM est uploadé
+        if (responseData.exists && responseData.egm_uploaded) {
+            // L'épisode existe avec EGM, récupérez directement les modèles IA et les jobs
+            console.log("Episode exists with EGM uploaded. Using response data...");
             return {
                 annotated: responseData.annotated,
                 exists: responseData.exists,
+                egm_uploaded: true,
                 ai_clients: responseData.ai_clients || [],
                 jobs: responseData.jobs || []
             };
         } else {
-            // L'épisode n'existe pas, procédez à l'upload de l'EGM
-            console.log("Episode does not exist. Proceeding to upload EGM...");
+            // L'épisode n'existe pas ou EGM pas uploadé, procédez à l'upload de l'EGM
+            console.log("Episode does not exist or EGM not uploaded. Proceeding to upload EGM...");
             const egmFormData = new FormData();
-            egmFormData.append("file", new Blob([files], { type: 'image/svg+xml' }), 'egm.svg');
+            egmFormData.append("files", new Blob([files], { type: 'image/svg+xml' }), 'egm.svg');
 
             const episodeResponse = await authenticatedFetch(`${API_URL}/episode/${responseData.episode_id}/egm`, {
                 method: "POST",
@@ -308,6 +309,7 @@ async function processEpisode(metadata, files) {
             return {
                 annotated: responseData.annotated,
                 exists: responseData.exists,
+                egm_uploaded: true,
                 ai_clients: egmData.ai_clients || [],
                 jobs: egmData.jobs || []
             };

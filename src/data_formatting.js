@@ -13,8 +13,16 @@ export function blobToBase64(blob) {
     });
 }
 
-export function ageAtEpisode(episode_date, date_of_birth) {
+export function ageAtEpisode(episode_date, date_of_birth, manufacturer = "biotronik") {
     // Fonction pour convertir une date en format français en objet Date
+
+    if(manufacturer === "medtronic") {
+        episode_date = episode_date.replaceAll('-', ' ');
+        date_of_birth = date_of_birth.replaceAll('-', ' ');
+    }
+
+    console.log("dates after treatement: ", episode_date, date_of_birth);
+
     function parseFrenchDate(dateStr, defaultTime = "00:00") {
         const months = {
             "janv.": "Jan",
@@ -33,7 +41,13 @@ export function ageAtEpisode(episode_date, date_of_birth) {
 
         const parts = dateStr.split(' ');
         const day = parts[0];
-        const month = months[parts[1]];
+        let month= "";
+        if(months[parts[1]] === undefined) {
+            console.log(`Month "${parts[1]}" is not recognized. Using default value`);
+            month = parts[1];
+        }else {
+            month = months[parts[1]];
+        }
         const year = parts[2];
         const time = parts[3] || defaultTime;
 

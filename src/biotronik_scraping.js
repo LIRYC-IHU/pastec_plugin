@@ -275,18 +275,20 @@ async function processEpisode(metadata) {
         // Labels disponibles dans `responseData`
         const labels = responseData.labels;
 
-        // Étape 2 : Vérifiez si l'épisode existe
-        if (responseData.exists) {
-            // L'épisode existe, récupérez directement les modèles IA et les jobs
-            console.log("Episode exists. Using response data...");
+        // Étape 2 : Vérifiez si l'épisode existe et si l'EGM est uploadé
+        if (responseData.exists && responseData.egm_uploaded) {
+            // L'épisode existe avec EGM, récupérez directement les modèles IA et les jobs
+            console.log("Episode exists with EGM uploaded. Using response data...");
             return {
                 labels,
                 ai_clients: responseData.ai_clients || [],
                 jobs: responseData.jobs || [],
                 exists: true,
-                annotated: responseData.annotated
+                annotated: responseData.annotated,
+                egm_uploaded: true
             };
         } else {
+            console.log("Episode does not exist or EGM not uploaded. Proceeding with SVG upload...");
             const svgBlob = await getSVGBlob();
             if (!svgBlob) {
                 console.error("❌ Impossible de récupérer le SVG en Blob.");
@@ -298,7 +300,7 @@ async function processEpisode(metadata) {
         
             // Préparer FormData
             const egmFormData = new FormData();
-            egmFormData.append("file", svgBlob, "egm.svg");
+            egmFormData.append("files", svgBlob, "egm.svg");
 
             const episodeResponse = await authenticatedFetch(`${API_URL}/episode/${responseData.episode_id}/egm`, {
                 method: "POST",
@@ -320,7 +322,8 @@ async function processEpisode(metadata) {
                 ai_clients: egmData.ai_clients || [],
                 jobs: egmData.jobs || [],
                 exists: false,
-                annotated: false
+                annotated: false,
+                egm_uploaded: true
             };
         }
     } catch (error) {

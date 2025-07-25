@@ -1,0 +1,70 @@
+[
+    {
+        "system": "Microport",
+        "labels": {
+            "V burst occurrence": ["TVNS", "Bistouri électrique", "myopotentiels", "TA/FA"],
+            "Mode Switch": ["TA/FA", "Surdétection", "interférence externe A", "bruit sur sonde A"],
+            "Atrial run": ["TA/FA", "Surdétection", "interférence externe A", "bruit sur sonde A"],
+            "ATP delivered": ["TV", "Surdétection onde P", "Surdétection onde T", "TSV", "Interférence externe", "Bruit intrinsèque sonde V"],
+            "Ventricular run": ["TVNS", "Bistouri électrique", "myopotentiels", "TA/FA"],
+            "Episodes without diagnoses": [""]
+        }
+    },
+    {
+        "system": "Medtronic",
+        "labels": {
+            "TV non soutenue": ["TVNS", "TV/FV", "Surdétection V", "Interférence externe V", "Rupture sonde V"],
+            "TV monitorée": ["TVNS", "TV/FV", "Surdétection V", "Interférence externe V", "Rupture sonde V"],
+            "FA monitorée": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "TA/FA monitorée": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "Episodes without diagnoses": [""]
+        }
+    },
+    {
+        "system": "Biotronik",
+        "labels": {
+            "EGM périodique": ["Normal", "Surdétection A", "Surdétection V", "Perte de capture A", "Perte de capture V", "Arythmie atriale", "Arythmie ventriculaire"],
+            "Monitorage atrial": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "FVE": ["TVNS", "TV/FV", "TA/FA", "Surdétection V", "Interférence externe V", "Rupture sonde V"],
+            "TA": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "TSV": ["TA/FA", "TV", "surdétection intrinsèque", "interférence externe"],
+            "FV": ["TV/FV", "TA/FA", "Surdétection V", "Interférence externe V", "Rupture sonde V"],
+            "Tns lente": ["TVNS", "TV/FV", "TA/FA", "Surdétection V", "Interférence externe V", "Rupture sonde V"],
+            "Commut. Mode": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "Episodes without diagnoses": [""]
+        }
+    },
+    {
+        "system": "Boston",
+        "labels": {
+            "Non sout": ["TVNS", "TV/FV", "TA/FA", "Surdétection", "Interférence externe V", "Bruit intrinsèque V"],
+            "Non sout.": ["TVNS", "TV/FV", "TA/FA", "Surdétection", "Interférence externe V", "Bruit intrinsèque V"],
+            "Tachy": ["TVNS", "TV/FV", "TA/FA", "Surdétection", "Interférence externe V", "Bruit intrinsèque V"],
+            "Monitorage atrial": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "TVNS": ["TVNS", "TV/FV", "TA/FA", "Surdétection", "Interférence externe V", "Bruit intrinsèque V"],
+            "RTA": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "FA": ["Fibrillation atriale", "Surdétection", "ESV", "TV/FV"],
+            "TRE": ["TRE", "TSV", "Tachycardie sinusale"],
+            "VD auto": ["Normal", "Perte de capture VD", "sous-détection VD"],
+            "VG auto": ["Normal", "Perte de capture VG", "sous-détection VG"],
+            "OD auto": ["Normal", "Perte de capture atriale"],
+            "RYTHMIQ™": ["BAV", "ESV", "ESA", "sous-détection V"],
+            "NonSustV": ["TVNS", "TV/FV", "Surdétection", "Interférence externe V", "Bruit intrinsèque V"],
+            "Traités": ["TV", "FV", "interférence externe", "interférence interne", "TA/FA"],
+            "Non-traité": ["TV", "FV", "interférence externe", "interférence interne", "TA/FA"],
+            "TSV (V<=A)": ["Fibrillation atriale", "Surdétection", "ESV", "TV/FV"],
+            "Episodes without diagnoses": [""]
+        }
+    },
+    {
+        "system": "Abbott",
+        "labels": {
+            "Real-time EGM Freeze": ["Normal", "Surdétection A", "Surdétection V", "Perte de capture A", "Perte de capture V", "Arythmie atriale", "Arythmie ventriculaire"],
+            "AMS Entry": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "Non-sustained": ["TVNS", "TV/FV", "Surdétection V", "Interférence externe V", "Rupture sonde V"],
+            "AT/AF Detection": ["TA/FA", "Surdétection A", "Interférence externe A", "Rupture sonde A"],
+            "High Ventricular Rate": ["TVNS", "TV/FV", "TA/FA", "Surdétection V", "Interférence externe V", "Rupture sonde V"],
+            "Episodes without diagnoses": ["Magnet Response"]
+        }
+    }
+]

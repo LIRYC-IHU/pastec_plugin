@@ -117,14 +117,17 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
 
     const initialTime = Date.now();
 
+    console.log("Processing viewer episode...");
+
     const { isHidden } = await chrome.storage.local.get("isHidden");
     console.log("isHidden state:", !isHidden);
     if (!isHidden) {
         console.log("Overlay is hidden, not displaying.");
         const overlay = document.getElementById("overlay-container");
-        overlay.style.setProperty("display", "none", "important");
+        if(overlay) {
+            overlay.style.setProperty("display", "none", "important");
+        }
     }
-
 
     const pdf_viewer = document.querySelector(".popup-label-buttons");
     if(!pdf_viewer) {
@@ -400,7 +403,15 @@ async function checkJobStatus(uploadPromise) {
 
 export async function loadPdfAndExtractImages(pdfBlob, system) {
     const images = [];
-    const pdfDoc = await pdfjsLib.getDocument(pdfBlob).promise;
+    let pdfDoc;
+    try {
+        pdfDoc = await pdfjsLib.getDocument(pdfBlob).promise;
+    } catch (error) {
+        console.error("Erreur lors du chargement du PDF:", error);
+        throw new Error("Échec du chargement du PDF");
+    }
+
+    console.log("PDF document loaded successfully:", pdfDoc);
 
     for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
         const page = await pdfDoc.getPage(pageNum);
@@ -416,7 +427,7 @@ export async function loadPdfAndExtractImages(pdfBlob, system) {
                 const imgKey = args[i][0]; // Clé de l'image dans objs
                 imgsFound++;
                 // console.log(`Image #${imgsFound} trouvée sur la page ${pageNum}`);
-                const imgObj = page.objs.get(imgKey);
+                const imgObj = await new Promise (resolve =>page.objs.get(imgKey, resolve));
                 if (imgObj.width == 2670 && system == "microport"){ //largeur des fichier EGM et du tachogramme
                     images.push(imgObj);
                 }
@@ -426,48 +437,49 @@ export async function loadPdfAndExtractImages(pdfBlob, system) {
         }
     }
 
+    console.log(`Total images found: ${images.length}`);
+
+
     return images;
 }
 
-export async function downloadImageBitmapAsImage(imageBitmapArray, system) {
-    const base64ImageArray = [];
+/**
+ * Transforme un tableau d'objets ImageBitmap/pdfjs en dataURLs PNG.
+ * @param {Array<Object|ImageBitmap>} items – chaque item est soit un ImageBitmap, soit un wrapper { bitmap: ImageBitmap, width, height, … }
+ * @param {string} system – pour appliquer un recadrage spécifique si besoin (ex. Abbott)
+ * @returns {Promise<string[]>} – tableau de chaînes de la forme "data:image/png;base64,…"
+ */
+export async function bitmapsToBase64(items, system) {
+  const base64s = [];
 
-    for (const [index, imageBitmap] of imageBitmapArray.entries()) {
-        // Création d'un nouveau canvas pour chaque image
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = imageBitmap.width;
-        canvas.height = imageBitmap.height;
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    // si c'est un wrapper pdfjs, on prend item.bitmap, sinon on prend item directement
+    const bitmap = item.bitmap || item;
 
-        // Dessin de l'image bitmap sur le canvas
-        ctx.drawImage(imageBitmap.bitmap, 0, 0);
+    // on crée un canvas de la taille exacte
+    const canvas = document.createElement('canvas');
+    canvas.width  = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
 
-        // Application de rectangles blancs selon le système
-        if (system === "abbott") {
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, canvas.width, 200);  // Rectangle blanc en haut
-            const bottomHeight = index === 0 ? 250 : 170;
-            ctx.fillRect(0, canvas.height - bottomHeight, canvas.width, bottomHeight);  // Rectangle blanc en bas
-        }
+    // on dessine l'ImageBitmap / HTMLImageElement / etc.
+    ctx.drawImage(bitmap, 0, 0);
 
-        // Conversion du contenu du canvas en base64 pour archivage
-        const base64Image = canvas.toDataURL('image/png');
-        base64ImageArray.push(base64Image);
-
-        // // Attente de la création du blob et de son téléchargement
-        // await new Promise((resolve) => {
-        //     canvas.toBlob((blob) => {
-        //         if (blob) {
-        //             downloadBlob(blob).then(resolve);  // Téléchargement du blob et résolution de la promesse
-        //         } else {
-        //             console.error('Failed to create blob from canvas');
-        //             resolve();  // Résolution de la promesse même en cas d'échec pour continuer le traitement
-        //         }
-        //     }, 'image/png');
-        // });
+    // si on veut appliquer un masque blanc pour Abbott
+    if (system === 'abbott') {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, 200);
+      const bottom = idx === 0 ? 250 : 170;
+      ctx.fillRect(0, canvas.height - bottom, canvas.width, bottom);
     }
 
-    return base64ImageArray;
+    // on récupère le dataURL complet
+    const dataUrl = canvas.toDataURL('image/png');
+    base64s.push(dataUrl);
+  }
+
+  return base64s;
 }
 
 function addListenersToPopup(htmlname) {

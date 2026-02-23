@@ -3,6 +3,8 @@ import * as CryptoJS from "crypto-js";
 import * as JSZip from "jszip";
 import { uint8ArrayToBase64, convertDurationToSeconds } from "./content";
 
+const API_URL = process.env.API_URL;
+
 let bearerToken;
 const processedRequestIds = new Set();
 
@@ -12,15 +14,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     }
 });
 
-// background.js
-chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
-  console.log("✋ rule matched!", info);
-});
-
-// (optional) inspect which rulesets are enabled
-chrome.declarativeNetRequest.getEnabledRulesets(sets => {
-  console.log("Enabled rulesets:", sets);
-});
+// Declarative net request removed for Chrome Web Store compatibility
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "encrypt patient data") {
@@ -128,7 +122,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
         for (const header of headers) {
           if (header.name.toLowerCase() === "authorization" && header.value.startsWith("bearer ")) {
             bearerToken = header.value.split(" ")[1]; // Extrait le token Bearer
-            console.log("Bearer Token intercepté:", bearerToken);
+            console.log("Authorization header intercepted");
           }
         }
     }
@@ -284,7 +278,7 @@ async function encryptData(episode_info) {
 
 async function getCredentials(name, password) {
     try {
-        const response = await fetch("http://musicp.chu-bordeaux.fr:9000/api/connect/keycloak", {
+        const response = await fetch(`${API_URL}/connect/keycloak`, {
             method: "POST",
             headers: {
                 "Accept": "application/json",
@@ -339,7 +333,7 @@ async function uploadEgm(bearer, metadata, egm_file) {
     };
 
     try {
-        const response = await fetch("http://musicp.chu-bordeaux.fr:9000/api/upload/egm", requestOptions);
+        const response = await fetch(`${API_URL}/upload/egm`, requestOptions);
         const contentType = response.headers.get("content-type");
 
         let responseBody;
@@ -382,7 +376,7 @@ async function saveUserAnnotation(bearer, metadata) {
         redirect: "follow"
         };
     
-        const response = await fetch(`http://musicp.chu-bordeaux.fr:9000/api/user/annotations/new?alert=${metadata.isAlert}`, requestOptions);
+        const response = await fetch(`${API_URL}/user/annotations/new?alert=${metadata.isAlert}`, requestOptions);
         return await response.json();  
     } catch (error) {
         console.error("error sending the annotation: ", error);
@@ -393,7 +387,12 @@ async function saveUserAnnotation(bearer, metadata) {
 
 async function getAnnotation(metadata) {
 
-    const bearer = await getCredentials('jtoucoula', 'admin');
+    // Use credentials from storage instead of hardcoded values
+    const { username, password } = await chrome.storage.local.get(['username', 'password']);
+    if (!username || !password) {
+        throw new Error('Credentials not found in storage');
+    }
+    const bearer = await getCredentials(username, password);
     const myHeaders = new Headers();
     myHeaders.append("accept", "application/json");
     myHeaders.append("Authorization", `Bearer ${bearer.access_token}`);
@@ -404,7 +403,7 @@ async function getAnnotation(metadata) {
       redirect: "follow"
     };
     
-    const response = await fetch(`http://musicp.chu-bordeaux.fr:9000/api/user/annotation/get?system=${metadata.system}&patientId=${metadata.patientId}&episodeID=${metadata.episodeId}`, requestOptions);
+    const response = await fetch(`${API_URL}/user/annotation/get?system=${metadata.system}&patientId=${metadata.patientId}&episodeID=${metadata.episodeId}`, requestOptions);
     if (!response.ok) {
         const error = await response.text();
         console.error("error getting episode annotation: ", error)
@@ -440,8 +439,13 @@ async function handlePdfTreated(message) {
             }
         }
 
-        const bearer = await getCredentials('jtoucoula', 'admin');
-        console.log("Bearer token received:", bearer.access_token);
+        // Use credentials from storage instead of hardcoded values
+        const { username, password } = await chrome.storage.local.get(['username', 'password']);
+        if (!username || !password) {
+            throw new Error('Credentials not found in storage');
+        }
+        const bearer = await getCredentials(username, password);
+        console.log("Authentication successful");
         if (!dataObject.isAnnotated) {
             const uploadResponse = await uploadEgm(bearer.access_token, dataObject.metadata, dataObject.files);
             console.log("Upload response:", uploadResponse);

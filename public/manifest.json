@@ -8,8 +8,6 @@
         "storage",
         "tabs",
         "webRequest",
-        "declarativeNetRequest",
-        "declarativeNetRequestFeedback",
         "cookies"
       ],
     "host_permissions": [
@@ -17,13 +15,6 @@
       "https://world.medtroniccarelink.net/*",
       "https://api-nl-prod.medtroniccarelink.net/*"
     ],
-    "declarative_net_request": {
-      "rule_resources": [{
-        "id": "blockDocs2",
-        "enabled": true,
-        "path": "rules_1.json"
-      }]
-    },
     "background": {
       "service_worker": "background.js",
       "type": "module"

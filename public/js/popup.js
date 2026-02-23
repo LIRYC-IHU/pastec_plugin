@@ -11,7 +11,7 @@ if (button) {  // Always check if the element exists
             return;
         }
 
-        console.log("Attempting to log in with:", usernameField.value, passwordField.value);
+        console.log("Attempting authentication");
 
         const response = await fetch("http://musicp.chu-bordeaux.fr:9000/api/connect/keycloak", {
             body: `username=${encodeURIComponent(usernameField.value)}&password=${encodeURIComponent(passwordField.value)}`,

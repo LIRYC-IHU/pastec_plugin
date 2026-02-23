@@ -1,6 +1,6 @@
 // Scraping for Microport: few info inside the webpage, need to scrape the pdf like in Medtronic to get the information.
 import * as pdfjsLib from "pdfjs-dist";
-import { extractTextByPage, processViewerEpisode, fetchPdfAsBlob, blobToBase64, base64ToBlob, loadPdfAndExtractImages, downloadImageBitmapAsImage, getChoices, injectGenericHTML, loadJsonFile } from "./content"
+import { extractTextByPage, processViewerEpisode, fetchPdfAsBlob, blobToBase64, base64ToBlob, loadPdfAndExtractImages, bitmapsToBase64, getChoices, injectGenericHTML, loadJsonFile } from "./content"
 
 console.log("microport_scraping.js initialized...");
 
@@ -83,7 +83,7 @@ async function processEachPDFSequentially(metadata, diagnoses, currentIndex = 0)
         console.log("Processing images...");
 
         const images = await loadPdfAndExtractImages(pdfUrl, "microport");
-        const imagesArray = await downloadImageBitmapAsImage(images);
+        const imagesArray = await bitmapsToBase64(images, "microport");
 
         console.log("Images processed, sending data to background");
 

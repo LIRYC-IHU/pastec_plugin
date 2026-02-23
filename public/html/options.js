@@ -62,7 +62,7 @@ if (button) {  // Always check if the element exists
             return;
         }
 
-        console.log("Attempting to log in with:", usernameField.value, passwordField.value, urlField.value);
+        console.log("Attempting authentication");
         try {
             const response = await fetch(`${urlField.value}/users/login`, {
                 method: "POST",

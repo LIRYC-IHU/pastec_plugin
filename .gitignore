@@ -6,5 +6,6 @@ ec2-user@51.20.129.165
 **.crx
 **.pem
 **.zip
+.env
 
 

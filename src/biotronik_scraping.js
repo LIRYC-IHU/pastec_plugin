@@ -301,6 +301,17 @@ async function processEpisode(metadata) {
             // Préparer FormData
             const egmFormData = new FormData();
             egmFormData.append("files", svgBlob, "egm.svg");
+            
+            // Debug: Vérifier le contenu de FormData
+            console.log("📊 FormData entries:");
+            for (let [key, value] of egmFormData.entries()) {
+                console.log(`${key}:`, value);
+                if (value instanceof File || value instanceof Blob) {
+                    console.log(`  - Size: ${value.size} bytes`);
+                    console.log(`  - Type: ${value.type}`);
+                    console.log(`  - Name: ${value.name || 'unnamed'}`);
+                }
+            }
 
             const episodeResponse = await authenticatedFetch(`${API_URL}/episode/${responseData.episode_id}/egm`, {
                 method: "POST",
@@ -349,15 +360,22 @@ async function getSVGBlob() {
     
     if (!objectElement || !objectElement.data) {
         console.error("❌ Aucun objet SVG trouvé !");
+        console.log("🔍 Elements trouvés avec 'object':", document.querySelectorAll('object'));
         return null;
     }
 
+    console.log("✅ SVG object trouvé, URL:", objectElement.data);
+
     try {
+        console.log("🌐 Fetching SVG from:", objectElement.data);
         const response = await fetch(objectElement.data); // Télécharger le SVG
         if (!response.ok) {
             throw new Error(`Erreur HTTP: ${response.status}`);
         }
-        return await response.blob(); // Convertir en Blob
+        console.log("✅ SVG fetch successful, Content-Type:", response.headers.get('content-type'));
+        const blob = await response.blob(); // Convertir en Blob
+        console.log("📦 Blob créé - Size:", blob.size, "Type:", blob.type);
+        return blob;
     } catch (error) {
         console.error("❌ Erreur lors de la récupération du SVG :", error);
         return null;

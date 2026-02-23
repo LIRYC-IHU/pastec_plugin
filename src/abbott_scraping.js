@@ -1,4 +1,4 @@
-import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, blobToBase64, loadPdfAndExtractImages, downloadImageBitmapAsImage, loadJsonFile, getChoices } from "./content";
+import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, blobToBase64, loadPdfAndExtractImages, bitmapsToBase64, loadJsonFile, getChoices } from "./content";
 
 const diagnoses = await loadJsonFile("Abbott");
 
@@ -110,7 +110,7 @@ async function processEpisode(dataTable, diagnoses) {
         const pdfUrl = URL.createObjectURL(pdfBlob);
 
         const images = await loadPdfAndExtractImages(pdfUrl, 'abbott');
-        const imagesArray = await downloadImageBitmapAsImage(images);
+        const imagesArray = await bitmapsToBase64(images, 'abbott');
 
         URL.revokeObjectURL(pdfUrl);
         delete metadata.link;

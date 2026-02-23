@@ -39,7 +39,7 @@ async function getValidToken() {
 
   // 2) Si pas de token ou pas de refresh_token → login
   if (!token || !refresh_token) {
-    console.log("Pas de token en stockage, on (re)logue l'utilisateur");
+    console.log("Authentication required");
     return authenticateUser();
   }
 
@@ -58,7 +58,7 @@ async function getValidToken() {
   }
 
   // 5) Token expiré → tentative de refresh
-  console.log("Token expiré, tentative de rafraîchissement…");
+  console.log("Refreshing authentication");
   const refreshRes = await fetch(`${API_URL}/users/token/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -75,12 +75,12 @@ async function getValidToken() {
       token: newToken,
       refresh_token: newRefresh
     });
-    console.log("Token rafraîchi avec succès");
+    console.log("Authentication refreshed successfully");
     return newToken;
   }
 
   // 7) Échec du refresh (invalid_grant…) → purge et relogin
-  console.warn("Refresh token invalide, purge et redirection au login");
+  console.warn("Authentication expired, please log in again");
   await chrome.storage.local.remove(["token", "refresh_token"]);
   return authenticateUser();
 }

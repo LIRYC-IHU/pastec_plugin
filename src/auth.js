@@ -1,5 +1,29 @@
 const API_URL = process.env.API_URL;
 
+async function computePepperFingerprint(pepper) {
+  const normalizedPepper = pepper.trim().toLowerCase();
+  const bytes = new TextEncoder().encode(normalizedPepper);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function getPluginAccessHeaders() {
+  const { pepper, center } = await chrome.storage.local.get(["pepper", "center"]);
+  const headers = {};
+
+  if (typeof center === "string" && center.trim()) {
+    headers["X-PASTEC-Center"] = center.trim().toLowerCase();
+  }
+
+  if (typeof pepper === "string" && /^[0-9a-fA-F]{64}$/.test(pepper.trim())) {
+    headers["X-PASTEC-Pepper-Fingerprint"] = await computePepperFingerprint(pepper);
+  }
+
+  return headers;
+}
+
 export async function authenticateUser() {
   // 1) Récupère username/password depuis chrome.storage.local
   const { username, password } = 
@@ -25,6 +49,7 @@ export async function authenticateUser() {
 
   // 3) Stocke les deux tokens
   await chrome.storage.local.set({
+    center: data.user?.primary_center || "",
     token: data.access_token,
     refresh_token: data.refresh_token
   });
@@ -87,8 +112,10 @@ async function getValidToken() {
 
 export async function authenticatedFetch(url, options = {}) {
   const token = await getValidToken();
+  const pluginHeaders = await getPluginAccessHeaders();
   const headers = {
     ...options.headers,
+    ...pluginHeaders,
     "Authorization": `Bearer ${token}`
   };
   const res = await fetch(url, { ...options, headers });

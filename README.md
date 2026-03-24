@@ -65,17 +65,78 @@ You still need to login to your remote monitoring platform the usual way to acce
 
 ### Center-Specific Pepper
 
-To ensure data privacy and pseudonymization, each participating center uses a **unique pepper value** for hashing patient identifiers:
+To ensure data privacy and pseudonymization, each participating center uses a **unique pepper value** for hashing patient identifiers.
+This pepper is provisioned to users through a **signed center configuration bundle** generated once by the backend and downloaded by the local center administrator.
 
-- **Pepper Configuration**: The pepper is a cryptographic secret unique to each medical center
+Each center bundle contains:
+
+- The center identifier
+- The center-specific pepper
+- Optional backend URL metadata
+- A backend signature that the plugin verifies locally before importing
+
+The backend stores only a **hash of the pepper** for later validation during uploads.
+It does **not** retain the pepper in recoverable form after the initial bundle download.
+
+Key properties:
+
+- **Pepper Configuration**: One cryptographic secret unique to each medical center
 - **Purpose**: Combined with patient identifiers to generate anonymized patient IDs and episode IDs
-- **Format**: 32-character hexadecimal string
+- **Format**: 64-character hexadecimal string
+- **Provisioning**: Imported into the plugin from a signed `.json` bundle, not typed manually
 - **Usage**: Applied during patient data encryption via HMAC-based hashing
 
 The pepper ensures that:
 1. Patient identifiers are not reversible
 2. Different centers cannot cross-reference patient data
 3. Episode tracking remains consistent within each center
+
+### Signed Center Bundle Procedure
+
+The signed center bundle is a **critical secret-bearing file**.
+It must be treated like a local cryptographic credential for the entire center.
+
+> Warning: the backend generates the center pepper only once and does not keep a recoverable copy. If the bundle is lost locally, the original pepper cannot be downloaded again.
+
+#### Initial Bundle Download
+
+1. A center administrator creates the center pepper from the backend administrative route.
+2. The backend generates the pepper **once** and immediately returns a signed bundle file.
+3. The administrator downloads this bundle locally and stores it in a secure institutional location.
+4. The bundle is then imported into the plugin from the options page after user login.
+
+#### Mandatory Local Backup
+
+The bundle must be backed up locally by the center administrator immediately after download.
+
+Recommended minimum practice:
+
+1. Keep one primary copy in a secure institutional folder with restricted access.
+2. Keep one secondary offline or restricted backup copy under institutional control.
+3. Document which local admin is responsible for custody of the bundle.
+4. Verify that the backup copy can actually be retrieved before distributing the bundle to users.
+
+#### Distribution to Center Users
+
+1. The local admin distributes the bundle **locally within the center** to authorized users only.
+2. Users log in to the plugin with their own backend credentials.
+3. Users then import the signed `.json` bundle into the plugin options page.
+4. The plugin verifies the signature locally before storing the center configuration.
+5. Users must not edit, rename, or regenerate the pepper contents manually.
+
+#### Critical Warning
+
+The center bundle must **never be lost**.
+
+Because the backend does not retain the pepper in recoverable form:
+
+1. Losing the only usable bundle means losing the center pepper.
+2. Without that pepper, the center cannot continue pseudonymizing new data consistently.
+3. The original pepper cannot be re-downloaded from the platform.
+4. Regenerating a new pepper would break pseudonymization continuity for that center dataset.
+
+In practice, loss of the bundle is a serious operational event and may fragment the center's dataset.
+This is why secure local backup and controlled local distribution are mandatory.
 
 ## Supported Manufacturers
 
@@ -122,6 +183,7 @@ A typical deployment of the PASTEC Chrome extension in a hospital or academic se
    or join the academic instance hosted at https://pastec.ihu-liryc.fr.
 
 2. Define and securely store a center-specific cryptographic pepper used for client-side pseudonymization.
+   This is now done through a signed center bundle generated once and kept under local administrative control.
 
 3. Deploy the Chrome extension either via the Chrome Web Store or through an internal institutional distribution process.
 

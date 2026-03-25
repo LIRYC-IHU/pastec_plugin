@@ -1,6 +1,6 @@
 // Scraping for Microport: few info inside the webpage, need to scrape the pdf like in Medtronic to get the information.
 import * as pdfjsLib from "pdfjs-dist";
-import { extractTextByPage, processViewerEpisode, fetchPdfAsBlob, blobToBase64, base64ToBlob, loadPdfAndExtractImages, bitmapsToBase64, getChoices, injectGenericHTML, loadJsonFile } from "./content"
+import { extractTextByPage, processViewerEpisode, fetchPdfAsBlob, blobToBase64, base64ToBlob, loadPdfAndExtractImages, bitmapsToBase64, getChoices, injectGenericHTML, loadJsonFile, showExtensionError } from "./content"
 
 console.log("microport_scraping.js initialized...");
 
@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         if (!pdfFrame) {
             console.error("PDF iframe not found.");
+            showExtensionError("Le PDF de l'épisode est introuvable sur cette page.", "Erreur MicroPort");
             return;
         }
         
@@ -44,6 +45,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     } catch (error) {
         console.error("An error occurred:", error);
+        showExtensionError(error, "Erreur MicroPort");
     }
 });
 
@@ -95,11 +97,13 @@ async function processEachPDFSequentially(metadata, diagnoses, currentIndex = 0)
                 console.log("Background response:", response);
             } else {
                 console.error("Failed to send message to background or no response received");
+                showExtensionError("Aucune réponse reçue du service d'arrière-plan.", "Erreur d'envoi");
             }
         });
         await processEachPDFSequentially(metadata, diagnoses, currentIndex + 1);
     } else {
         console.error(`PDF data undefined for ${fileKey}.`);
+        showExtensionError(`Le contenu PDF ${currentIndex + 1} est indisponible.`, "Erreur MicroPort");
         // Optionally skip to the next index or handle the error differently
         await processEachPDFSequentially(metadata, diagnoses, currentIndex + 1);
     }

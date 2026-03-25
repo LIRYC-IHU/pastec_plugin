@@ -2,6 +2,10 @@ console.log("options script initialized");
 
 const button = document.querySelector("#submit-button");
 
+function normalizeUrl(value) {
+    return value.trim().replace(/\/+$/, "");
+}
+
 function setAuthStatus(message) {
     const authStatus = document.querySelector("#auth-status");
     if (authStatus) {
@@ -126,9 +130,11 @@ async function applyProvisioningPayload(payload, baseUrl) {
     const pepperField = document.querySelector("#pepper");
     const centerField = document.querySelector("#center");
     const urlField = document.querySelector("#url");
+    const normalizedBaseUrl = normalizeUrl(baseUrl);
 
     const updates = {
         pepper: payload.pepper.trim(),
+        api_url: normalizedBaseUrl,
     };
 
     if (payload.center) {
@@ -144,10 +150,22 @@ async function applyProvisioningPayload(payload, baseUrl) {
         centerField.value = updates.center;
     }
     if (urlField && payload.api_url) {
-        urlField.value = payload.api_url;
-    } else if (urlField && baseUrl) {
-        urlField.value = baseUrl;
+        const normalizedPayloadUrl = normalizeUrl(payload.api_url);
+        urlField.value = normalizedPayloadUrl;
+        updates.api_url = normalizedPayloadUrl;
+    } else if (urlField && normalizedBaseUrl) {
+        urlField.value = normalizedBaseUrl;
     }
+
+    await chrome.storage.local.set({ api_url: updates.api_url });
+}
+
+async function sendRuntimeMessage(payload) {
+    const response = await chrome.runtime.sendMessage(payload);
+    if (!response?.ok) {
+        throw new Error(response?.error || "Operation failed");
+    }
+    return response;
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -156,12 +174,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const centerField = document.querySelector("#center");
     const urlField = document.querySelector("#url");
 
-    const { pepper, center } = await chrome.storage.local.get(["pepper", "center"]);
+    const { pepper, center, api_url, user_access } = await chrome.storage.local.get(["pepper", "center", "api_url", "user_access"]);
     if (pepperField) {
         pepperField.value = pepper || "";
     }
     if (centerField) {
         centerField.value = center || "";
+    }
+    if (urlField) {
+        urlField.value = api_url || normalizeUrl(urlField.value);
+    }
+    if (user_access?.username) {
+        setAuthStatus(`Utilisateur connecte: ${user_access.username}`);
     }
 
     if (fileInput) {
@@ -191,57 +215,32 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 if (button) {
     button.addEventListener("click", async () => {
-        const usernameField = document.querySelector("#username");
-        const passwordField = document.querySelector("#password");
         const centerField = document.querySelector("#center");
         const urlField = document.querySelector("#url");
 
-        if (!usernameField || !passwordField || !urlField) {
+        if (!urlField) {
             console.error("Required identification fields are missing.");
             return;
         }
 
-        console.log("Attempting authentication");
+        const apiUrl = normalizeUrl(urlField.value);
+        console.log("Attempting authentication with Keycloak");
         try {
-            const response = await fetch(`${urlField.value}/users/login`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Access-Control-Allow-Origin": "*",
-                },
-                body: new URLSearchParams({
-                    username: usernameField.value,
-                    password: passwordField.value,
-                }),
+            const response = await sendRuntimeMessage({
+                action: "pastec-auth-login",
+                apiUrl,
             });
-
-            if (!response.ok) {
-                console.error("Authentication failed:", response.statusText);
-                setAuthStatus(`Echec de l'authentification: ${response.statusText}`);
-                return;
-            }
-
-            const data = await response.json();
-            await chrome.storage.local.set({
-                username: usernameField.value,
-                password: passwordField.value,
-                center: data.user?.primary_center || "",
-                token: data.access_token,
-                refresh_token: data.refresh_token,
-            });
+            await chrome.storage.local.set({ api_url: apiUrl });
 
             if (centerField) {
-                centerField.value = data.user?.primary_center || "";
+                centerField.value = response.user?.primary_center || "";
             }
 
-            setAuthStatus("Authentification reussie. Importez ensuite le bundle signe du centre.");
-            usernameField.value = "";
-            passwordField.value = "";
+            setAuthStatus("Authentification Keycloak reussie. Importez ensuite le bundle signe du centre.");
         } catch (error) {
-            console.error("Error setting up credentials:", error);
-            window.alert("Identifiant ou mot de passe incorrect : impossible de s'identifier");
-            usernameField.value = "";
-            passwordField.value = "";
+            console.error("Error setting up Keycloak authentication:", error);
+            window.alert(`Impossible de s'identifier via Keycloak: ${error.message || error.toString()}`);
+            setAuthStatus("Echec de l'authentification Keycloak.");
         }
     });
 } else {

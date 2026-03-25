@@ -1,4 +1,4 @@
-import { injectGenericHTML, processViewerEpisode, convertDurationToSeconds } from "./content";
+import { injectGenericHTML, processViewerEpisode, convertDurationToSeconds, showExtensionError } from "./content";
 import { authenticatedFetch, authenticateUser} from "./auth";
 import { ageAtEpisode } from "./data_formatting";
 
@@ -31,6 +31,7 @@ window.addEventListener("load", async () => {
 
         if (!patientNameElement || !deviceElement || !dobElement) {
             console.error("Required elements not found on page");
+            showExtensionError("Impossible de récupérer les informations patient sur cette page.", "Erreur de chargement PASTEC");
             return;
         }
 
@@ -111,6 +112,7 @@ window.addEventListener("load", async () => {
 
     } catch (error) {
         console.error("Error in main script execution:", error);
+        showExtensionError(error, "Erreur lors de l'initialisation PASTEC");
     }
 });
 
@@ -122,6 +124,7 @@ async function setupListeners(dataTable) {
     const episodeElement = document.querySelector("#episode");
     if (!episodeElement) {
         console.error("Episode table not found");
+        showExtensionError("Tableau des épisodes introuvable sur cette page.", "Erreur de chargement PASTEC");
         return;
     }
     console.log("Adding click listener to episode table");
@@ -144,9 +147,11 @@ async function setupListeners(dataTable) {
                     await handleEpisodeClick(metadata, isBatch);
                 } catch (error) {
                     console.error("Error in handleEpisodeClick:", error);
+                    showExtensionError(error, "Erreur lors du traitement de l'épisode");
                 }
             } else {
                 console.error("No metadata found for clicked element");
+                showExtensionError("Les métadonnées de l'épisode sont introuvables.", "Erreur de traitement");
             }
         } else {
             console.log("Click not on EGM icon");
@@ -197,6 +202,7 @@ async function handleEpisodeClick(metadata, isBatch) {
                         resolve();
                     } catch (error) {
                         console.error("Erreur lors du traitement du SVG:", error);
+                        showExtensionError(error, "Erreur lors de la lecture de l'EGM");
                     }
                 }
             });
@@ -204,6 +210,7 @@ async function handleEpisodeClick(metadata, isBatch) {
 
         } catch (error) {
             console.error("Erreur lors du traitement de l'épisode:", error);
+            showExtensionError(error, "Erreur lors du traitement de l'épisode");
         }
 
     });
@@ -316,6 +323,7 @@ async function processEpisode(metadata, files) {
         }
     } catch (error) {
         console.error("Error processing episode:", error);
+        showExtensionError(error, "Erreur lors de l'envoi de l'épisode");
         throw error;
     }
 }

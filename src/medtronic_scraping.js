@@ -1,6 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
 
-import { sendDataToBackground, getEpisodeInformation, convertDurationToSeconds, extractTextByPage, injectGenericHTML, processViewerEpisode, loadPdfAndExtractImages, bitmapsToBase64} from "./content";
+import { sendDataToBackground, getEpisodeInformation, convertDurationToSeconds, extractTextByPage, injectGenericHTML, processViewerEpisode, loadPdfAndExtractImages, bitmapsToBase64, showExtensionError} from "./content";
 import { authenticatedFetch } from "./auth";
 import { ageAtEpisode } from "./data_formatting";
 import "./intercept-fetch";
@@ -73,6 +73,7 @@ async function processPdfFromBlob(requestId, pdfBlob) {
         
     } catch(error) {
         console.error("Erreur lors du chargement du PDF avec PDF.js", error);
+        showExtensionError(error, "Erreur lors du chargement du PDF");
     }
 }
 
@@ -544,6 +545,7 @@ async function handleDiagnosisSelection(diagnosis, metadata) {
         
     } catch (error) {
         console.error("Error processing annotation:", error);
+        showExtensionError(error, "Erreur lors de l'annotation");
         // Don't close viewer on error to allow retry
         return;
     }
@@ -647,6 +649,7 @@ async function checkMedtronicJobStatus(responseData) {
         await updateJobElements();
     } catch (error) {
         console.error("⚠️ Erreur dans checkMedtronicJobStatus:", error);
+        showExtensionError(error, "Erreur lors de la récupération des résultats IA");
         aiSelector.innerHTML = "❌ Erreur lors de la vérification des jobs IA";
     }   
 }
@@ -773,6 +776,7 @@ async function processEpisode(metadata, pdfBlob, blobUrl) {
         }
     } catch (error) {
         console.error("Error processing episode:", error);
+        showExtensionError(error, "Erreur lors de l'envoi de l'épisode");
         throw error;
     }
 }

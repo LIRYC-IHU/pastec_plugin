@@ -7,5 +7,7 @@ ec2-user@51.20.129.165
 **.pem
 **.zip
 .env
-
+.env-dev
+.env-prod
+.env.local
 

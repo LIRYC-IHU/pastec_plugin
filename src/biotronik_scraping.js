@@ -1,4 +1,4 @@
-import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, blobToBase64, convertDurationToSeconds } from "./content";
+import { injectGenericHTML, processViewerEpisode, fetchPdfAsBlob, blobToBase64, convertDurationToSeconds, showExtensionError } from "./content";
 import { ageAtEpisode } from "./data_formatting";
 import { authenticateUser, authenticatedFetch } from "./auth";
 
@@ -6,15 +6,41 @@ console.log("biotronik_scraping.js script initialized");
 console.log("API URL:", process.env.API_URL);
 const API_URL = process.env.API_URL;
 
-const observer = new MutationObserver((mutations, obs) => {
-    const element = document.querySelector("#DisplayEpisode > table > tbody > tr:nth-child(2) > td > table > tbody > tr:nth-child(1) > td.RightColumn > table > tbody > tr > td.Content > table.ChartData > tbody > tr:nth-child(2) > td > object");
-    if (element) {
-        initializeScript();
-        obs.disconnect();
+let biotronikInitialized = false;
+
+function findBiotronikEpisodeElement() {
+    return (
+        document.querySelector("#DisplayEpisode") ||
+        document.querySelector("#reportData1") ||
+        document.querySelector('object[type="image/svg+xml"]') ||
+        document.querySelector("#DisplayEpisode\\:printButton")
+    );
+}
+
+function bootstrapBiotronikScript() {
+    if (biotronikInitialized) {
+        return;
     }
+
+    const element = findBiotronikEpisodeElement();
+    if (!element) {
+        return;
+    }
+
+    biotronikInitialized = true;
+    initializeScript().catch((error) => {
+        console.error("Biotronik bootstrap failed:", error);
+        showExtensionError(error, "Erreur Biotronik");
+        biotronikInitialized = false;
+    });
+}
+
+const observer = new MutationObserver(() => {
+    bootstrapBiotronikScript();
 });
 
 observer.observe(document, {childList: true, subtree: true});
+bootstrapBiotronikScript();
 
 async function initializeScript() {
     try {
@@ -97,8 +123,7 @@ async function initializeScript() {
 
             if (missing.length) {
                 console.error(`[Scraper] Champs non récupérés : ${missing.join(", ")}`);
-                // Lever l'erreur seulement si c'est bloquant
-                window.alert(`Certaines données patient sont manquantes ; ${missing.join(", ")}: impossible de continuer`);
+                showExtensionError(`Certaines données patient sont manquantes : ${missing.join(", ")}`, "Erreur de récupération des données");
                 throw new Error("Certaines données patient sont manquantes ; voir la console pour le détail.");
             }
 
@@ -130,6 +155,11 @@ async function initializeScript() {
             }
         });
 
+        if (!encryptResponse?.patientId || !encryptResponse?.episodeId) {
+            console.error("Invalid encryption response for Biotronik episode:", encryptResponse);
+            throw new Error("Unable to generate encrypted identifiers for this episode");
+        }
+
         const metadata = {
             patientName: scrapedData.patientName,
             implantSerial: scrapedData.implantSerial,
@@ -159,9 +189,11 @@ async function initializeScript() {
             };
         } catch (error) {
             console.error("erreur pendant le processing de l'episode: ", error);
+            showExtensionError(error, "Erreur lors du traitement de l'épisode");
         }       
     } catch (error) {
         console.error("An error occurred: ", error);
+        showExtensionError(error, "Erreur Biotronik");
     }
 }
 
@@ -234,6 +266,7 @@ try {
 
 } catch (error) {
     console.error("Erreur lors de la récupération du PDF:", error);
+    showExtensionError(error, "Erreur lors de l'ouverture du PDF");
 }
 
 }
@@ -271,6 +304,13 @@ async function processEpisode(metadata) {
         const responseData = await response.json();
         console.log("Response data from upload_episode:", responseData);
         console.log("responsedata annotation", responseData.annotated);
+
+        if (responseData?.episode_id) {
+            metadata.episodeId = responseData.episode_id;
+        }
+        if (responseData?.patient_id) {
+            metadata.patientId = responseData.patient_id;
+        }
 
         // Labels disponibles dans `responseData`
         const labels = responseData.labels;
@@ -339,6 +379,7 @@ async function processEpisode(metadata) {
         }
     } catch (error) {
         console.error("Error processing episode:", error);
+        showExtensionError(error, "Erreur lors de l'envoi de l'épisode");
         throw error;
     }
 }
@@ -378,6 +419,7 @@ async function getSVGBlob() {
         return blob;
     } catch (error) {
         console.error("❌ Erreur lors de la récupération du SVG :", error);
+        showExtensionError(error, "Erreur lors de la récupération de l'EGM");
         return null;
     }
 }

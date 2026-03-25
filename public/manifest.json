@@ -6,12 +6,19 @@
     "permissions": [
         "activeTab",
         "storage",
+        "identity",
         "tabs",
         "webRequest",
         "cookies"
       ],
     "host_permissions": [
       "https://pastec.ihu-liryc.fr/*",
+      "http://localhost:8000/*",
+      "http://localhost:8080/*",
+      "https://www.microport-smartview.com/*",
+      "https://www.merlin.net/*",
+      "https://www.biotronik-homemonitoring.com/*",
+      "https://www.latitudenxt.bostonscientific-international.com/*",
       "https://world.medtroniccarelink.net/*",
       "https://api-nl-prod.medtroniccarelink.net/*"
     ],
@@ -21,10 +28,23 @@
     },
   "content_scripts": [
       {
-        "matches": ["https://www.biotronik-homemonitoring.com/hmsc_guiWeb/patient/monitoring/DisplayPatientContext.jsf*"],
-        "js": ["biotronik_scraping.js", "content.js"],
+        "matches": ["https://www.microport-smartview.com/BOWebUI/Clinic/PatientTransmissionHistory.aspx?*"],
+        "js": ["microport_scraping.js", "content.js"],
+        "css": ["css/pdf-viewer.css"],
+        "run_at": "document_start"
+      },
+      {
+        "matches": ["https://www.merlin.net/group/merlin-ep_b/transmission-details*"],
+        "js": ["abbott_scraping.js", "content.js"],
         "css": ["css/overlay-container.css"],
         "run_at": "document_start"
+      },
+      {
+        "matches": ["https://www.biotronik-homemonitoring.com/hmsc_guiWeb/patient/monitoring/*"],
+        "js": ["biotronik_scraping.js", "content.js"],
+        "css": ["css/overlay-container.css"],
+        "run_at": "document_start",
+        "all_frames": true
       },
       {
         "matches": ["https://www.latitudenxt.bostonscientific-international.com/clinic/devicepage/events*"],

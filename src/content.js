@@ -4,6 +4,131 @@ import { authenticatedFetch } from "./auth";
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.js');
 
 const API_URL = process.env.API_URL;
+const TOAST_ROOT_ID = "pastec-toast-root";
+const TOAST_STYLE_ID = "pastec-toast-style";
+
+function ensureToastStyle() {
+    if (document.getElementById(TOAST_STYLE_ID)) {
+        return;
+    }
+
+    const style = document.createElement("style");
+    style.id = TOAST_STYLE_ID;
+    style.textContent = `
+        #${TOAST_ROOT_ID} {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 2147483647;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: min(420px, calc(100vw - 32px));
+            pointer-events: none;
+        }
+
+        .pastec-toast {
+            pointer-events: auto;
+            background: rgba(122, 15, 33, 0.96);
+            color: #fff;
+            border-left: 4px solid #ffb4b4;
+            border-radius: 10px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+            padding: 12px 14px;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .pastec-toast__title {
+            display: block;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .pastec-toast__close {
+            float: right;
+            border: none;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            margin-left: 12px;
+            padding: 0;
+        }
+    `;
+
+    document.head.appendChild(style);
+}
+
+function ensureToastRoot() {
+    ensureToastStyle();
+
+    let root = document.getElementById(TOAST_ROOT_ID);
+    if (!root) {
+        root = document.createElement("div");
+        root.id = TOAST_ROOT_ID;
+        document.body.appendChild(root);
+    }
+
+    return root;
+}
+
+function formatErrorMessage(error) {
+    if (!error) {
+        return "Une erreur inattendue est survenue.";
+    }
+
+    if (typeof error === "string") {
+        return error;
+    }
+
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+
+    if (typeof error === "object" && error.message) {
+        return error.message;
+    }
+
+    return "Une erreur inattendue est survenue.";
+}
+
+export function showExtensionError(error, title = "Erreur PASTEC") {
+    if (!document.body) {
+        return;
+    }
+
+    const root = ensureToastRoot();
+    const toast = document.createElement("div");
+    toast.className = "pastec-toast";
+
+    const closeButton = document.createElement("button");
+    closeButton.className = "pastec-toast__close";
+    closeButton.type = "button";
+    closeButton.textContent = "×";
+    closeButton.addEventListener("click", () => toast.remove());
+
+    const titleElement = document.createElement("strong");
+    titleElement.className = "pastec-toast__title";
+    titleElement.textContent = title;
+
+    const messageElement = document.createElement("div");
+    messageElement.textContent = formatErrorMessage(error);
+
+    toast.appendChild(closeButton);
+    toast.appendChild(titleElement);
+    toast.appendChild(messageElement);
+    root.appendChild(toast);
+
+    window.setTimeout(() => {
+        toast.remove();
+        if (root.childElementCount === 0) {
+            root.remove();
+        }
+    }, 8000);
+}
 
 export function cleanAllButtons() {
     const buttons = document.querySelectorAll(".label-button");
@@ -51,6 +176,7 @@ export async function injectGenericHTML(containerId) {
         return container;
     } catch (err) {
         console.error('Error in injectGenericHTML:', err);
+        showExtensionError(err, "Impossible d'afficher l'interface PASTEC");
         throw new Error(`Failed to inject HTML: ${err.message}`);
     }
 }
@@ -257,6 +383,7 @@ export async function processViewerEpisode(metadata, labels, uploadPromise) {
                 if (opt2) opt2.checked = true;
             } catch (error) {
                 console.error("Error processing annotation:", error);
+                showExtensionError(error, "Erreur lors de l'annotation");
                 reject(error);
             }
         });
@@ -397,6 +524,7 @@ async function checkJobStatus(uploadPromise) {
         });
     } catch (error) {
         console.error("⚠️ Erreur dans checkJobStatus:", error);
+        showExtensionError(error, "Erreur lors de la récupération des résultats IA");
         throw new Error("Échec de la vérification du statut des jobs IA");
     }   
 }

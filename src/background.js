@@ -4,9 +4,382 @@ import * as JSZip from "jszip";
 import { uint8ArrayToBase64, convertDurationToSeconds } from "./content";
 
 const API_URL = process.env.API_URL;
+const DEFAULT_KEYCLOAK_BASE_URL = process.env.KEYCLOAK_BASE_URL;
+const DEFAULT_KEYCLOAK_REALM = process.env.KEYCLOAK_REALM || "pastec";
+const DEFAULT_KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || "pastec_plugin";
 
 let bearerToken;
 const processedRequestIds = new Set();
+
+function normalizeUrl(value) {
+    return value.trim().replace(/\/+$/, "");
+}
+
+function base64UrlEncode(bytes) {
+    const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join("");
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeBase64Url(value) {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    return atob(padded);
+}
+
+function decodeToken(token) {
+    const payload = token.split(".")[1];
+    if (!payload) {
+        throw new Error("Invalid access token payload");
+    }
+    return JSON.parse(decodeBase64Url(payload));
+}
+
+function isTokenStillValid(token) {
+    if (!token) {
+        return false;
+    }
+
+    try {
+        const payload = decodeToken(token);
+        return typeof payload.exp === "number" && payload.exp > (Date.now() / 1000) + 30;
+    } catch (error) {
+        console.warn("Unable to decode stored token:", error);
+        return false;
+    }
+}
+
+function extractScopedValues(groups, scopeName) {
+    if (!Array.isArray(groups)) {
+        return [];
+    }
+
+    return groups
+        .filter(group => typeof group === "string" && group.startsWith(`/${scopeName}/`))
+        .map(group => group.split("/").pop())
+        .filter(Boolean);
+}
+
+function buildFallbackUser(accessToken) {
+    const payload = decodeToken(accessToken);
+    const clientRoles = Object.values(payload.resource_access || {})
+        .flatMap(resource => Array.isArray(resource?.roles) ? resource.roles : []);
+    const realmRoles = Array.isArray(payload.realm_access?.roles) ? payload.realm_access.roles : [];
+    const groups = Array.isArray(payload.groups) ? payload.groups : [];
+    const centers = Array.isArray(payload.centers) ? payload.centers : extractScopedValues(groups, "centers");
+    const projects = Array.isArray(payload.projects) ? payload.projects : extractScopedValues(groups, "projects");
+
+    return {
+        username: payload.preferred_username || payload.name || "",
+        email: payload.email || "",
+        roles: [...new Set([...realmRoles, ...clientRoles])],
+        realm_roles: realmRoles,
+        client_roles: clientRoles,
+        centers,
+        projects,
+        primary_center: payload.primary_center || centers[0] || "",
+        user_type: payload.user_type || "",
+    };
+}
+
+async function getAuthConfig(overrides = {}) {
+    const stored = await chrome.storage.local.get([
+        "api_url",
+    ]);
+
+    const apiUrl = normalizeUrl(overrides.apiUrl || stored.api_url || API_URL);
+    const keycloakBaseUrl = normalizeUrl(
+        overrides.keycloakBaseUrl
+        || DEFAULT_KEYCLOAK_BASE_URL
+        || `${new URL(apiUrl).origin}/auth`
+    );
+    const realm = (overrides.realm || DEFAULT_KEYCLOAK_REALM).trim();
+    const clientId = (overrides.clientId || DEFAULT_KEYCLOAK_CLIENT_ID).trim();
+
+    return {
+        apiUrl,
+        keycloakBaseUrl,
+        realm,
+        clientId,
+        authorizationUrl: `${keycloakBaseUrl}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/auth`,
+        tokenUrl: `${keycloakBaseUrl}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/token`,
+    };
+}
+
+async function sha256Base64Url(value) {
+    const bytes = new TextEncoder().encode(value);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return base64UrlEncode(new Uint8Array(digest));
+}
+
+function createCodeVerifier() {
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    return base64UrlEncode(randomBytes);
+}
+
+function createState() {
+    if (typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+    }
+
+    const randomBytes = new Uint8Array(16);
+    crypto.getRandomValues(randomBytes);
+    return base64UrlEncode(randomBytes);
+}
+
+async function launchWebAuthFlow(url) {
+    return new Promise((resolve, reject) => {
+        chrome.identity.launchWebAuthFlow({ url, interactive: true }, redirectedUrl => {
+            if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+                return;
+            }
+
+            if (!redirectedUrl) {
+                reject(new Error("No redirect URL received from Keycloak"));
+                return;
+            }
+
+            resolve(redirectedUrl);
+        });
+    });
+}
+
+async function loadUserAccess(apiUrl, accessToken) {
+    const response = await fetch(`${apiUrl}/users/me/access`, {
+        method: "GET",
+        headers: {
+            "Authorization": `Bearer ${accessToken}`,
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error(`Unable to fetch user access profile: ${response.status}`);
+    }
+
+    return response.json();
+}
+
+async function persistAuthSession(config, tokenData) {
+    const accessToken = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token || "";
+    let user;
+
+    try {
+        user = await loadUserAccess(config.apiUrl, accessToken);
+    } catch (error) {
+        console.warn("Unable to resolve user access from backend, falling back to token payload:", error);
+        user = buildFallbackUser(accessToken);
+    }
+
+    const updates = {
+        api_url: config.apiUrl,
+        token: accessToken,
+        refresh_token: refreshToken,
+        user_access: user,
+    };
+
+    if (user?.primary_center) {
+        updates.center = user.primary_center.trim().toLowerCase();
+    }
+
+    await chrome.storage.local.set(updates);
+    return user;
+}
+
+async function clearAuthSession() {
+    await chrome.storage.local.remove(["token", "refresh_token", "user_access"]);
+}
+
+async function exchangeAuthorizationCode(config, code, codeVerifier, redirectUri) {
+    console.log("[PASTEC auth] Exchanging authorization code", {
+        tokenUrl: config.tokenUrl,
+        clientId: config.clientId,
+        realm: config.realm,
+        redirectUri,
+        codeLength: code.length,
+        codeVerifierLength: codeVerifier.length,
+    });
+
+    const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+            grant_type: "authorization_code",
+            client_id: config.clientId,
+            code,
+            code_verifier: codeVerifier,
+            redirect_uri: redirectUri,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[PASTEC auth] Code exchange failed", {
+            status: response.status,
+            tokenUrl: config.tokenUrl,
+            clientId: config.clientId,
+            realm: config.realm,
+            redirectUri,
+            response: errorText,
+        });
+        throw new Error(`Keycloak code exchange failed: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+}
+
+async function refreshAccessToken(config, refreshToken) {
+    console.log("[PASTEC auth] Refreshing access token", {
+        tokenUrl: config.tokenUrl,
+        clientId: config.clientId,
+        realm: config.realm,
+        refreshTokenPresent: Boolean(refreshToken),
+    });
+
+    const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+            grant_type: "refresh_token",
+            client_id: config.clientId,
+            refresh_token: refreshToken,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[PASTEC auth] Refresh failed", {
+            status: response.status,
+            tokenUrl: config.tokenUrl,
+            clientId: config.clientId,
+            realm: config.realm,
+            response: errorText,
+        });
+        throw new Error(`Keycloak token refresh failed: ${response.status} ${errorText}`);
+    }
+
+    return response.json();
+}
+
+async function authenticateWithKeycloak(overrides = {}) {
+    const config = await getAuthConfig(overrides);
+    const redirectUri = chrome.identity.getRedirectURL("keycloak");
+    const codeVerifier = createCodeVerifier();
+    const codeChallenge = await sha256Base64Url(codeVerifier);
+    const state = createState();
+
+    const authorizationUrl = new URL(config.authorizationUrl);
+    authorizationUrl.search = new URLSearchParams({
+        client_id: config.clientId,
+        response_type: "code",
+        redirect_uri: redirectUri,
+        scope: "openid profile email",
+        state,
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256",
+    }).toString();
+
+    console.log("[PASTEC auth] Starting Keycloak login", {
+        apiUrl: config.apiUrl,
+        keycloakBaseUrl: config.keycloakBaseUrl,
+        realm: config.realm,
+        clientId: config.clientId,
+        authorizationUrl: config.authorizationUrl,
+        tokenUrl: config.tokenUrl,
+        redirectUri,
+    });
+
+    const redirectedUrl = await launchWebAuthFlow(authorizationUrl.toString());
+    const redirectedLocation = new URL(redirectedUrl);
+
+    console.log("[PASTEC auth] Redirect received", {
+        redirectOrigin: redirectedLocation.origin,
+        redirectPath: redirectedLocation.pathname,
+        hasCode: Boolean(redirectedLocation.searchParams.get("code")),
+        hasState: Boolean(redirectedLocation.searchParams.get("state")),
+        hasError: Boolean(redirectedLocation.searchParams.get("error")),
+        error: redirectedLocation.searchParams.get("error"),
+        errorDescription: redirectedLocation.searchParams.get("error_description"),
+    });
+
+    if (redirectedLocation.searchParams.get("state") !== state) {
+        throw new Error("Keycloak state validation failed");
+    }
+
+    const authorizationError = redirectedLocation.searchParams.get("error");
+    if (authorizationError) {
+        throw new Error(redirectedLocation.searchParams.get("error_description") || authorizationError);
+    }
+
+    const authorizationCode = redirectedLocation.searchParams.get("code");
+    if (!authorizationCode) {
+        throw new Error("No authorization code returned by Keycloak");
+    }
+
+    const tokenData = await exchangeAuthorizationCode(config, authorizationCode, codeVerifier, redirectUri);
+    const user = await persistAuthSession(config, tokenData);
+
+    return {
+        token: tokenData.access_token,
+        user,
+        config,
+    };
+}
+
+async function getValidAccessToken(options = {}) {
+    const config = await getAuthConfig(options);
+    const { token, refresh_token: refreshToken } = await chrome.storage.local.get(["token", "refresh_token"]);
+
+    console.log("[PASTEC auth] Resolving valid token", {
+        apiUrl: config.apiUrl,
+        keycloakBaseUrl: config.keycloakBaseUrl,
+        realm: config.realm,
+        clientId: config.clientId,
+        hasToken: Boolean(token),
+        hasRefreshToken: Boolean(refreshToken),
+        interactive: options.interactive !== false,
+    });
+
+    if (isTokenStillValid(token)) {
+        console.log("[PASTEC auth] Using cached access token");
+        return {
+            token,
+            user: (await chrome.storage.local.get(["user_access"])).user_access || null,
+            config,
+        };
+    }
+
+    if (refreshToken) {
+        try {
+            const refreshedTokens = await refreshAccessToken(config, refreshToken);
+            if (!refreshedTokens.refresh_token) {
+                refreshedTokens.refresh_token = refreshToken;
+            }
+            const user = await persistAuthSession(config, refreshedTokens);
+            console.log("[PASTEC auth] Refresh succeeded");
+            return {
+                token: refreshedTokens.access_token,
+                user,
+                config,
+            };
+        } catch (error) {
+            console.warn("Refresh token flow failed, clearing stored auth session:", error);
+            await clearAuthSession();
+        }
+    }
+
+    if (options.interactive === false) {
+        throw new Error("Authentication required");
+    }
+
+    console.log("[PASTEC auth] Starting interactive login because no valid token is available");
+    return authenticateWithKeycloak(config);
+}
 
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === chrome.runtime.OnInstalledReason.INSTALL || details.reason === chrome.runtime.OnInstalledReason.UPDATE) {
@@ -17,6 +390,38 @@ chrome.runtime.onInstalled.addListener((details) => {
 // Declarative net request removed for Chrome Web Store compatibility
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "pastec-auth-login") {
+        authenticateWithKeycloak({ apiUrl: message.apiUrl }).then(result => {
+            sendResponse({
+                ok: true,
+                token: result.token,
+                user: result.user,
+            });
+        }).catch(error => {
+            console.error("Keycloak authentication failed:", error);
+            sendResponse({
+                ok: false,
+                error: error.message || error.toString(),
+            });
+        });
+        return true;
+    }
+    if (message.action === "pastec-auth-get-valid-token") {
+        getValidAccessToken({ apiUrl: message.apiUrl }).then(result => {
+            sendResponse({
+                ok: true,
+                token: result.token,
+                user: result.user,
+            });
+        }).catch(error => {
+            console.error("Unable to get a valid Keycloak token:", error);
+            sendResponse({
+                ok: false,
+                error: error.message || error.toString(),
+            });
+        });
+        return true;
+    }
     if (message.action === "encrypt patient data") {
         console.log("Encrypting patient data in the background");
         encryptData(message.episode_info).then(({ patientId, episodeId }) => {;
@@ -276,31 +681,12 @@ async function encryptData(episode_info) {
   return { patientId, episodeId };
 }
 
-async function getCredentials(name, password) {
-    try {
-        const response = await fetch(`${API_URL}/connect/keycloak`, {
-            method: "POST",
-            headers: {
-                "Accept": "application/json",
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body: `username=${encodeURIComponent(name)}&password=${encodeURIComponent(password)}`
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        
-        const json = await response.json();
-        console.log("API Response:", json);
-        return json;
-    } catch (error) {
-        console.error("Failed to fetch credentials:", error.message);
-        return null;
-    }
+async function getConfiguredApiUrl() {
+    return (await getAuthConfig()).apiUrl;
 }
 
 async function uploadEgm(bearer, metadata, egm_file) {
+    const apiUrl = await getConfiguredApiUrl();
     const myHeaders = new Headers();
     myHeaders.append("Authorization", `Bearer ${bearer}`);
 
@@ -333,7 +719,7 @@ async function uploadEgm(bearer, metadata, egm_file) {
     };
 
     try {
-        const response = await fetch(`${API_URL}/upload/egm`, requestOptions);
+        const response = await fetch(`${apiUrl}/upload/egm`, requestOptions);
         const contentType = response.headers.get("content-type");
 
         let responseBody;
@@ -360,6 +746,7 @@ async function uploadEgm(bearer, metadata, egm_file) {
 
 async function saveUserAnnotation(bearer, metadata) {
     try {
+        const apiUrl = await getConfiguredApiUrl();
         const myHeaders = new Headers();
         myHeaders.append("Authorization", `Bearer ${bearer}`);
     
@@ -376,7 +763,7 @@ async function saveUserAnnotation(bearer, metadata) {
         redirect: "follow"
         };
     
-        const response = await fetch(`${API_URL}/user/annotations/new?alert=${metadata.isAlert}`, requestOptions);
+        const response = await fetch(`${apiUrl}/user/annotations/new?alert=${metadata.isAlert}`, requestOptions);
         return await response.json();  
     } catch (error) {
         console.error("error sending the annotation: ", error);
@@ -386,16 +773,11 @@ async function saveUserAnnotation(bearer, metadata) {
 }
 
 async function getAnnotation(metadata) {
-
-    // Use credentials from storage instead of hardcoded values
-    const { username, password } = await chrome.storage.local.get(['username', 'password']);
-    if (!username || !password) {
-        throw new Error('Credentials not found in storage');
-    }
-    const bearer = await getCredentials(username, password);
+    const apiUrl = await getConfiguredApiUrl();
+    const { token } = await getValidAccessToken();
     const myHeaders = new Headers();
     myHeaders.append("accept", "application/json");
-    myHeaders.append("Authorization", `Bearer ${bearer.access_token}`);
+    myHeaders.append("Authorization", `Bearer ${token}`);
     
     const requestOptions = {
       method: "GET",
@@ -403,7 +785,7 @@ async function getAnnotation(metadata) {
       redirect: "follow"
     };
     
-    const response = await fetch(`${API_URL}/user/annotation/get?system=${metadata.system}&patientId=${metadata.patientId}&episodeID=${metadata.episodeId}`, requestOptions);
+    const response = await fetch(`${apiUrl}/user/annotation/get?system=${metadata.system}&patientId=${metadata.patientId}&episodeID=${metadata.episodeId}`, requestOptions);
     if (!response.ok) {
         const error = await response.text();
         console.error("error getting episode annotation: ", error)
@@ -439,22 +821,17 @@ async function handlePdfTreated(message) {
             }
         }
 
-        // Use credentials from storage instead of hardcoded values
-        const { username, password } = await chrome.storage.local.get(['username', 'password']);
-        if (!username || !password) {
-            throw new Error('Credentials not found in storage');
-        }
-        const bearer = await getCredentials(username, password);
+        const { token } = await getValidAccessToken();
         console.log("Authentication successful");
         if (!dataObject.isAnnotated) {
-            const uploadResponse = await uploadEgm(bearer.access_token, dataObject.metadata, dataObject.files);
+            const uploadResponse = await uploadEgm(token, dataObject.metadata, dataObject.files);
             console.log("Upload response:", uploadResponse);
         } else {
             console.log("Episode already annotated, not uploading again.");
         }
 
         if (dataObject.metadata.diagnosis) {
-            const annotationResponse = await saveUserAnnotation(bearer.access_token, dataObject.metadata);
+            const annotationResponse = await saveUserAnnotation(token, dataObject.metadata);
             console.log("Annotation response:", annotationResponse);
         } else {
             console.log("No new diagnosis made for this episode.");

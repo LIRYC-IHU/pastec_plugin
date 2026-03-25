@@ -1,4 +1,21 @@
-const API_URL = process.env.API_URL;
+const DEFAULT_API_URL = process.env.API_URL;
+
+function normalizeUrl(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+
+async function getApiUrl() {
+  const { api_url } = await chrome.storage.local.get(["api_url"]);
+  return normalizeUrl(api_url || DEFAULT_API_URL);
+}
+
+async function sendAuthMessage(action, extra = {}) {
+  const response = await chrome.runtime.sendMessage({ action, ...extra });
+  if (!response?.ok) {
+    throw new Error(response?.error || "Authentication request failed");
+  }
+  return response;
+}
 
 async function computePepperFingerprint(pepper) {
   const normalizedPepper = pepper.trim().toLowerCase();
@@ -25,111 +42,33 @@ async function getPluginAccessHeaders() {
 }
 
 export async function authenticateUser() {
-  // 1) Récupère username/password depuis chrome.storage.local
-  const { username, password } = 
-    await chrome.storage.local.get(["username", "password"]);
-
-  if (!username || !password) {
-    window.alert(
-      "Identifiant ou mot de passe manquant ; veuillez vous connecter à l'application."
-    );
-    throw new Error("Missing credentials");
-  }
-
-  // 2) Appel login
-  const res = await fetch(`${API_URL}/users/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ username, password })
-  });
-  if (!res.ok) {
-    throw new Error(`Authentication failed: ${res.status}`);
-  }
-  const data = await res.json();
-
-  // 3) Stocke les deux tokens
-  await chrome.storage.local.set({
-    center: data.user?.primary_center || "",
-    token: data.access_token,
-    refresh_token: data.refresh_token
-  });
-
-  return data.access_token;
+  const apiUrl = await getApiUrl();
+  const response = await sendAuthMessage("pastec-auth-login", { apiUrl });
+  return response.token;
 }
 
 async function getValidToken() {
-  // 1) Lecture atomique des tokens
-  const { token, refresh_token } = 
-    await chrome.storage.local.get(["token", "refresh_token"]);
-
-  // 2) Si pas de token ou pas de refresh_token → login
-  if (!token || !refresh_token) {
-    console.log("Authentication required");
-    return authenticateUser();
-  }
-
-  // 3) Vérifie l'expiration
-  let payload;
-  try {
-    payload = decode_token(token);
-  } catch {
-    console.warn("Impossible de décoder le token, on reloge");
-    return authenticateUser();
-  }
-
-  if (payload.exp > Date.now() / 1000) {
-    // 4) Token encore valide
-    return token;
-  }
-
-  // 5) Token expiré → tentative de refresh
-  console.log("Refreshing authentication");
-  const refreshRes = await fetch(`${API_URL}/users/token/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ refresh_token })
-  });
-
-  if (refreshRes.ok) {
-    const data = await refreshRes.json();
-    const newToken = data.access_token;
-    const newRefresh = data.refresh_token || refresh_token;
-
-    // 6) Met à jour le stockage
-    await chrome.storage.local.set({
-      token: newToken,
-      refresh_token: newRefresh
-    });
-    console.log("Authentication refreshed successfully");
-    return newToken;
-  }
-
-  // 7) Échec du refresh (invalid_grant…) → purge et relogin
-  console.warn("Authentication expired, please log in again");
-  await chrome.storage.local.remove(["token", "refresh_token"]);
-  return authenticateUser();
+  const apiUrl = await getApiUrl();
+  const response = await sendAuthMessage("pastec-auth-get-valid-token", { apiUrl });
+  return response.token;
 }
 
 export async function authenticatedFetch(url, options = {}) {
+  const apiUrl = await getApiUrl();
   const token = await getValidToken();
   const pluginHeaders = await getPluginAccessHeaders();
+  const normalizedDefaultApiUrl = normalizeUrl(DEFAULT_API_URL);
+  const targetUrl = typeof url === "string" && url.startsWith(normalizedDefaultApiUrl)
+    ? `${apiUrl}${url.slice(normalizedDefaultApiUrl.length)}`
+    : url;
   const headers = {
     ...options.headers,
     ...pluginHeaders,
     "Authorization": `Bearer ${token}`
   };
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(targetUrl, { ...options, headers });
   if (!res.ok) {
     throw new Error(`Fetch failed with status ${res.status}`);
   }
   return res;
-}
-
-function decode_token(token) {
-  if (!token) throw new Error("No token to decode");
-  const b64 = token.split(".")[1]
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-  const json = atob(b64);
-  return JSON.parse(json);
 }

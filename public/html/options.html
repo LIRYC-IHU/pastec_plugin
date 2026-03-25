@@ -9,14 +9,8 @@
 <body>
     <div id="identification-field">
         <h1>Identification utilisateur</h1>
-        <p></p><p></p>
-        <label for="username">Nom d'utilisateur</label>
+        <p>La connexion se fait via Keycloak dans une fenetre securisee. Le plugin ne stocke plus votre mot de passe localement.</p>
         <p></p>
-        <input type="text" id="username" class="text-field" name="username"/>
-        <p></p><p></p>
-        <label for="password">Mot de passe</label>
-        <p></p>
-        <input type="password" id="password" class="text-field" name="password"/>
         <p></p>
         <label for="url">Nom de domaine (ne pas modifier)</label>
         <p></p>
@@ -34,15 +28,12 @@
         <input type="file" id="pepper-file" accept=".json"/>
         <p></p>
         <p></p>
-        <a href="https://pastec.ihu-liryc.fr/auth/realms/pastec/protocol/openid-connect/auth?client_id=pastec_server&response_type=code&redirect_uri=https://pastec.ihu-liryc.fr/users/callback&scope=openid%20profile%20email">Première connexion - Cliquer ici</a>
-        <p></p>
-        <p></p>
         <a href="https://pastec.ihu-liryc.fr/docs#/User%20Management/reset_pwd_users_reset_password_post">Mot de passe oublié? (temporaire)</a>
         <p></p>
     </div>
 
     <div id="submit">
-        <button id="submit-button" class="label-button">Soumettre</button>
+        <button id="submit-button" class="label-button">Connexion Keycloak</button>
         <p></p>
         <p></p>
         <p id="auth-status"></p>

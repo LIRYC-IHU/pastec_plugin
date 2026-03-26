@@ -36,6 +36,7 @@ html body #overlay-container {
     background-color: whitesmoke !important;
     padding: 1rem !important;
     border-left: 0.2rem solid lightgrey !important;
+    animation: pastec-side-overlay-enter 140ms ease-out !important;
 }
 
 .job-element{
@@ -259,4 +260,22 @@ html body #overlay-container {
     color: whitesmoke !important;
     cursor: pointer !important;
     background-color: var(--deep-red) !important;
+}
+
+@keyframes pastec-side-overlay-enter {
+    from {
+        opacity: 0;
+        transform: translateX(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #overlay-container {
+        animation: none !important;
+    }
 }

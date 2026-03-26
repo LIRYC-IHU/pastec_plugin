@@ -645,7 +645,6 @@ export async function loadJsonFile(url) {
 
 export function convertDurationToSeconds(duration, system) {
     let hours = 0, minutes = 0,  seconds = 0;
-    let hoursMatch, minutesMatch, secondsMatch;
 
     console.log("duration: ", duration);
 
@@ -653,6 +652,43 @@ export function convertDurationToSeconds(duration, system) {
         console.error("no duration in the string");
         return -1;
     }
+
+    const parseClockDuration = (value) => {
+        const parts = value
+            .trim()
+            .split(":")
+            .map((part) => Number.parseInt(part, 10));
+
+        if (parts.some(Number.isNaN)) {
+            return null;
+        }
+
+        if (parts.length === 3) {
+            return {
+                hours: parts[0],
+                minutes: parts[1],
+                seconds: parts[2]
+            };
+        }
+
+        if (parts.length === 2) {
+            return {
+                hours: 0,
+                minutes: parts[0],
+                seconds: parts[1]
+            };
+        }
+
+        if (parts.length === 1) {
+            return {
+                hours: 0,
+                minutes: 0,
+                seconds: parts[0]
+            };
+        }
+
+        return null;
+    };
 
     switch(system){
         case 'Biotronik':
@@ -675,22 +711,12 @@ export function convertDurationToSeconds(duration, system) {
             }
             break;
         case 'Medtronic':
-            const fullPattern = /(?:(\d{1,2}):)?(?:(\d{1,2}):)?(\d{2})/;
-            const match = duration.match(fullPattern);
-            if (match) {
-                if (match[1] && match[2]) {
-                    // hh:mm:ss format
-                    hours = parseInt(match[1], 10);
-                    minutes = parseInt(match[2], 10);
-                    seconds = parseInt(match[3], 10);
-                } else if (match[1]) {
-                    // mm:ss format
-                    minutes = parseInt(match[1], 10);
-                    seconds = parseInt(match[2], 10);
-                } else {
-                    // ss format
-                    seconds = parseInt(match[3], 10);
-                }
+        case 'Abbott':
+            const clockDuration = parseClockDuration(duration);
+            if (clockDuration) {
+                hours = clockDuration.hours;
+                minutes = clockDuration.minutes;
+                seconds = clockDuration.seconds;
             }
             break;
         case 'Boston':

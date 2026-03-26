@@ -9,7 +9,270 @@ const DEFAULT_KEYCLOAK_REALM = process.env.KEYCLOAK_REALM || "pastec";
 const DEFAULT_KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || "pastec_plugin";
 
 let bearerToken;
-const processedRequestIds = new Set();
+let abbottRequestContext = {
+    authorization: null,
+    subscriptionKey: null,
+    apiVersion: "1.0",
+};
+let medtronicRequestContext = {
+    token: null,
+    clientId: null,
+    xDtpc: null,
+    isAssociatedClinicAccessingExpress: null,
+    documentOrigin: null,
+};
+const processedRequestIds = new Map();
+const MEDTRONIC_REQUEST_DEDUP_WINDOW_MS = 15000;
+const MEDTRONIC_TRIGGER_WINDOW_MS = 15000;
+let lastMedtronicPdfTrigger = null;
+const suppressedMedtronicPopupTabs = new Set();
+
+function pruneProcessedRequestIds() {
+    const now = Date.now();
+
+    for (const [requestId, timestamp] of processedRequestIds.entries()) {
+        if (now - timestamp > MEDTRONIC_REQUEST_DEDUP_WINDOW_MS) {
+            processedRequestIds.delete(requestId);
+        }
+    }
+}
+
+function hasRecentProcessedRequestId(requestId) {
+    pruneProcessedRequestIds();
+    const timestamp = processedRequestIds.get(requestId);
+
+    return typeof timestamp === "number" && (Date.now() - timestamp) < MEDTRONIC_REQUEST_DEDUP_WINDOW_MS;
+}
+
+function markProcessedRequestId(requestId) {
+    pruneProcessedRequestIds();
+    processedRequestIds.set(requestId, Date.now());
+}
+
+function rememberMedtronicPdfTrigger(sender) {
+    const tabId = sender?.tab?.id;
+    if (typeof tabId !== "number") {
+        return;
+    }
+
+    lastMedtronicPdfTrigger = {
+        tabId,
+        frameId: typeof sender?.frameId === "number" ? sender.frameId : 0,
+        timestamp: Date.now(),
+        url: sender?.tab?.url || ""
+    };
+}
+
+function getMedtronicPdfMessageTarget(details) {
+    if (details.type === "xmlhttprequest" && typeof details.tabId === "number" && details.tabId >= 0) {
+        return {
+            tabId: details.tabId,
+            frameId: typeof details.frameId === "number" ? details.frameId : 0
+        };
+    }
+
+    if (
+        lastMedtronicPdfTrigger
+        && (Date.now() - lastMedtronicPdfTrigger.timestamp) < MEDTRONIC_TRIGGER_WINDOW_MS
+    ) {
+        return {
+            tabId: lastMedtronicPdfTrigger.tabId,
+            frameId: lastMedtronicPdfTrigger.frameId
+        };
+    }
+
+    return null;
+}
+
+function hasRecentMedtronicPdfTrigger() {
+    return Boolean(
+        lastMedtronicPdfTrigger
+        && (Date.now() - lastMedtronicPdfTrigger.timestamp) < MEDTRONIC_TRIGGER_WINDOW_MS
+    );
+}
+
+function getRecentMedtronicSourceTabId() {
+    return hasRecentMedtronicPdfTrigger() ? lastMedtronicPdfTrigger.tabId : null;
+}
+
+function isLikelyMedtronicPopupUrl(url) {
+    if (typeof url !== "string" || !url) {
+        return false;
+    }
+
+    if (url.startsWith("blob:")) {
+        return url.includes("medtroniccarelink.net");
+    }
+
+    if (url === "about:blank") {
+        return true;
+    }
+
+    try {
+        const parsedUrl = new URL(url);
+        return (
+            /(^|\.)medtroniccarelink\.net$/i.test(parsedUrl.hostname)
+            && (
+                /^\/CareLink\.API\.Service\/api\/documents\/\d+$/.test(parsedUrl.pathname)
+                || parsedUrl.pathname.startsWith("/carelink.web/")
+            )
+        );
+    } catch (error) {
+        return false;
+    }
+}
+
+function closeMedtronicPopupTab(tabId, reason) {
+    if (typeof tabId !== "number" || suppressedMedtronicPopupTabs.has(tabId)) {
+        return;
+    }
+
+    const sourceTabId = getRecentMedtronicSourceTabId();
+    if (tabId === sourceTabId) {
+        return;
+    }
+
+    suppressedMedtronicPopupTabs.add(tabId);
+    console.log("Closing Medtronic popup tab", { tabId, reason });
+
+    chrome.tabs.remove(tabId).catch((error) => {
+        console.warn("Unable to close Medtronic popup tab", { tabId, reason, error });
+    }).finally(() => {
+        globalThis.setTimeout(() => {
+            suppressedMedtronicPopupTabs.delete(tabId);
+        }, MEDTRONIC_TRIGGER_WINDOW_MS);
+    });
+}
+
+function updateMedtronicRequestContext(details) {
+    const headers = details.requestHeaders || [];
+
+    for (const header of headers) {
+        const name = header?.name?.toLowerCase?.() || "";
+        const value = header?.value || "";
+
+        if (name === "authorization" && /^bearer\s+/i.test(value)) {
+            const nextToken = value.replace(/^bearer\s+/i, "");
+            if (nextToken) {
+                bearerToken = nextToken;
+                medtronicRequestContext.token = nextToken;
+            }
+            continue;
+        }
+
+        if (name === "client-id" && value) {
+            medtronicRequestContext.clientId = value;
+            continue;
+        }
+
+        if (name === "x-dtpc" && value) {
+            medtronicRequestContext.xDtpc = value;
+            continue;
+        }
+
+        if (name === "isassociatedclinicaccessingexpress" && value) {
+            medtronicRequestContext.isAssociatedClinicAccessingExpress = value;
+        }
+    }
+
+    try {
+        medtronicRequestContext.documentOrigin = new URL(details.url).origin;
+    } catch (error) {
+        console.warn("Unable to parse Medtronic request origin", error);
+    }
+}
+
+function updateAbbottRequestContext(details) {
+    const headers = details.requestHeaders || [];
+
+    for (const header of headers) {
+        const name = header?.name?.toLowerCase?.() || "";
+        const value = header?.value || "";
+
+        if (name === "authorization" && /^bearer\s+/i.test(value)) {
+            abbottRequestContext.authorization = value;
+            continue;
+        }
+
+        if (name === "ocp-apim-subscription-key" && value) {
+            abbottRequestContext.subscriptionKey = value;
+            continue;
+        }
+
+        if (name === "x-api-version" && value) {
+            abbottRequestContext.apiVersion = value;
+        }
+    }
+}
+
+function hasAbbottRequestContext() {
+    return Boolean(
+        abbottRequestContext.authorization
+        && abbottRequestContext.subscriptionKey
+    );
+}
+
+function arrayBufferToBase64(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    const chunkSize = 0x8000;
+    let binary = "";
+
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+}
+
+async function fetchAbbottPdf(episodeAndEgmId, websiteNotificationId) {
+    if (!hasAbbottRequestContext()) {
+        throw new Error("Contexte Abbott manquant. Rafraîchissez la page Abbott, attendez son chargement complet, puis réessayez.");
+    }
+
+    if (!episodeAndEgmId || !websiteNotificationId) {
+        throw new Error("Paramètres Abbott manquants pour récupérer le PDF.");
+    }
+
+    const requestUrl = new URL("https://p1euapim.merlin.net/transmissions/episodes/print");
+    requestUrl.searchParams.set("episodeAndEgmIds", episodeAndEgmId);
+    requestUrl.searchParams.set("websiteNotificationId", websiteNotificationId);
+
+    const requestId = `${crypto.randomUUID()}_${Date.now()}`;
+    console.log("Fetching Abbott PDF directly", {
+        requestUrl: requestUrl.toString(),
+        episodeAndEgmId,
+        websiteNotificationId,
+        requestId,
+    });
+
+    const response = await fetch(requestUrl.toString(), {
+        method: "GET",
+        headers: {
+            "Accept": "application/json, application/pdf, application/text",
+            "Authorization": abbottRequestContext.authorization,
+            "X-API-VERSION": abbottRequestContext.apiVersion,
+            "X-Request-ID": requestId,
+            "ocp-apim-subscription-key": abbottRequestContext.subscriptionKey,
+        },
+        referrer: "https://europe.merlin.net/",
+        referrerPolicy: "strict-origin-when-cross-origin",
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Échec de récupération du PDF Abbott: ${response.status} ${errorText}`);
+    }
+
+    const contentType = response.headers.get("content-type") || "application/pdf";
+    const base64 = arrayBufferToBase64(await response.arrayBuffer());
+
+    return {
+        base64,
+        contentType,
+        requestUrl: requestUrl.toString(),
+    };
+}
 
 function normalizeUrl(value) {
     return value.trim().replace(/\/+$/, "");
@@ -407,7 +670,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
     if (message.action === "pastec-auth-get-valid-token") {
-        getValidAccessToken({ apiUrl: message.apiUrl }).then(result => {
+        getValidAccessToken({
+            apiUrl: message.apiUrl,
+            interactive: message.interactive,
+        }).then(result => {
             sendResponse({
                 ok: true,
                 token: result.token,
@@ -517,23 +783,96 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return true;
     }
+    if (message.action === "ensure medtronic page bridge") {
+        const tabId = sender?.tab?.id;
+        const frameId = typeof sender?.frameId === "number" ? sender.frameId : 0;
+
+        if (typeof tabId !== "number") {
+            sendResponse({ ok: false, error: "No sender tab available for Medtronic page bridge injection" });
+            return true;
+        }
+
+        chrome.scripting.executeScript({
+            target: {
+                tabId,
+                frameIds: [frameId]
+            },
+            files: ["medtronic_page_bridge.js"],
+            world: "MAIN"
+        }).then(() => {
+            console.log("Medtronic page bridge injected", { tabId, frameId });
+            sendResponse({ ok: true });
+        }).catch((error) => {
+            console.error("Failed to inject Medtronic page bridge", error);
+            sendResponse({ ok: false, error: error.message || error.toString() });
+        });
+        return true;
+    }
+    if (message.action === "get medtronic bearer token") {
+        sendResponse({
+            token: medtronicRequestContext.token || bearerToken || null,
+            clientId: medtronicRequestContext.clientId || null,
+            xDtpc: medtronicRequestContext.xDtpc || null,
+            isAssociatedClinicAccessingExpress: medtronicRequestContext.isAssociatedClinicAccessingExpress || null,
+            documentOrigin: medtronicRequestContext.documentOrigin || null,
+        });
+        return true;
+    }
+    if (message.action === "medtronic-pdf-click") {
+        rememberMedtronicPdfTrigger(sender);
+        console.log("Medtronic PDF trigger received from tab", sender?.tab?.id);
+        sendResponse({ ok: true });
+        return true;
+    }
+    if (message.action === "abbott-fetch-pdf") {
+        fetchAbbottPdf(message.episodeAndEgmId, message.websiteNotificationId).then((result) => {
+            sendResponse({
+                ok: true,
+                base64: result.base64,
+                contentType: result.contentType,
+                requestUrl: result.requestUrl,
+            });
+        }).catch((error) => {
+            console.error("Unable to fetch Abbott PDF", error);
+            sendResponse({
+                ok: false,
+                error: error.message || error.toString(),
+            });
+        });
+        return true;
+    }
 });
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
     async function(details) {
-    if(bearerToken == undefined) {
-        console.log("header intercepté");
-        const headers = details.requestHeaders;
-        for (const header of headers) {
-          if (header.name.toLowerCase() === "authorization" && header.value.startsWith("bearer ")) {
-            bearerToken = header.value.split(" ")[1]; // Extrait le token Bearer
-            console.log("Authorization header intercepted");
-          }
+        updateAbbottRequestContext(details);
+        if (hasAbbottRequestContext()) {
+            console.log("Abbott request context intercepted");
         }
-    }
     },
-    { urls: ["https://api-nl-prod.medtroniccarelink.net/CareLink.API.Service/api/transmissions/*"] },
-    ["requestHeaders"]
+    {
+        urls: [
+            "https://p1euapim.merlin.net/*"
+        ]
+    },
+    ["requestHeaders", "extraHeaders"]
+  );
+
+chrome.webRequest.onBeforeSendHeaders.addListener(
+    async function(details) {
+        console.log("header intercepté");
+        updateMedtronicRequestContext(details);
+        if (medtronicRequestContext.token) {
+            console.log("Authorization header intercepted");
+        }
+    },
+    {
+        urls: [
+            "https://world.medtroniccarelink.net/CareLink.API.Service/api/*",
+            "https://api-nl-prod.medtroniccarelink.net/CareLink.API.Service/api/*"
+        ]
+    },
+    ["requestHeaders", "extraHeaders"]
   );
 
 chrome.webRequest.onHeadersReceived.addListener(
@@ -543,21 +882,75 @@ chrome.webRequest.onHeadersReceived.addListener(
         const documentID = components.pop()
         const pattern = /\d+/ 
 
-        if (details.method === "GET" && pattern.test(documentID) && !processedRequestIds.has(documentID)) {
-            processedRequestIds.add(documentID);
+        if (details.method === "GET" && pattern.test(documentID) && !hasRecentProcessedRequestId(documentID)) {
+            markProcessedRequestId(documentID);
             console.log("Requête API interceptée:", details.url);
             console.log("Code réponse: ", details.statusCode);
-            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-                const activeTab = tabs[0];
-                if (activeTab) {
-                    console.log("request link being sent to content script")
-                    chrome.tabs.sendMessage(activeTab.id, {type: "pdfUrl", requestId: documentID,  token: bearerToken});
-                }
+            const target = getMedtronicPdfMessageTarget(details);
+
+            if (!target) {
+                console.warn("No Medtronic tab available for intercepted PDF request");
+                return;
+            }
+
+            console.log("request link being sent to content script", target);
+            chrome.tabs.sendMessage(
+                target.tabId,
+                {
+                    type: "pdfUrl",
+                    requestId: documentID,
+                    token: medtronicRequestContext.token || bearerToken,
+                    requestUrl: details.url,
+                    clientId: medtronicRequestContext.clientId || null,
+                    xDtpc: medtronicRequestContext.xDtpc || null,
+                    isAssociatedClinicAccessingExpress: medtronicRequestContext.isAssociatedClinicAccessingExpress || null,
+                    documentOrigin: medtronicRequestContext.documentOrigin || null,
+                },
+                { frameId: target.frameId }
+            ).catch((error) => {
+                console.error("Failed to send Medtronic PDF request to content script", error);
             });
         }
     },
-    {urls: ["https://api-nl-prod.medtroniccarelink.net/CareLink.API.Service/api/documents/*"], types: ["xmlhttprequest"]},
+    {
+        urls: [
+            "https://world.medtroniccarelink.net/CareLink.API.Service/api/documents/*",
+            "https://api-nl-prod.medtroniccarelink.net/CareLink.API.Service/api/documents/*"
+        ]
+    },
   );
+
+chrome.tabs.onCreated.addListener((tab) => {
+    const sourceTabId = getRecentMedtronicSourceTabId();
+
+    if (typeof sourceTabId !== "number") {
+        return;
+    }
+
+    if (tab.openerTabId === sourceTabId) {
+        closeMedtronicPopupTab(tab.id, "created from Medtronic PDF click");
+    }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    const sourceTabId = getRecentMedtronicSourceTabId();
+
+    if (typeof sourceTabId !== "number" || tabId === sourceTabId) {
+        return;
+    }
+
+    const candidateUrl = changeInfo.pendingUrl || changeInfo.url || tab.pendingUrl || tab.url || "";
+    const openedFromSourceTab = tab.openerTabId === sourceTabId;
+
+    if (openedFromSourceTab && (!candidateUrl || candidateUrl === "about:blank")) {
+        closeMedtronicPopupTab(tabId, "blank popup opened from Medtronic PDF click");
+        return;
+    }
+
+    if ((openedFromSourceTab || isLikelyMedtronicPopupUrl(candidateUrl)) && isLikelyMedtronicPopupUrl(candidateUrl)) {
+        closeMedtronicPopupTab(tabId, `popup updated to ${candidateUrl}`);
+    }
+});
 
 async function getDataFromPdf(textArray) {
 

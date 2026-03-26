@@ -1,15 +1,20 @@
 import * as pdfjsLib from "pdfjs-dist";
 
-import { sendDataToBackground, getEpisodeInformation, convertDurationToSeconds, extractTextByPage, injectGenericHTML, processViewerEpisode, loadPdfAndExtractImages, bitmapsToBase64, showExtensionError} from "./content";
+import { convertDurationToSeconds, extractTextByPage, injectGenericHTML, loadPdfAndExtractImages, showExtensionError } from "./content";
 import { authenticatedFetch } from "./auth";
 import { ageAtEpisode } from "./data_formatting";
-import "./intercept-fetch";
+import { ensureMedtronicPageBridge } from "./intercept-fetch";
 
 console.log("medtronic_scraping.js loaded");
 console.log("API URL:", process.env.API_URL);
 const API_URL = process.env.API_URL;
+const MEDTRONIC_PDF_ICON_SELECTOR = 'img[id^="PDF_Img_"], img[src*="PDFBtn.png"]';
+const MEDTRONIC_POPUP_SUPPRESSION_MS = 15000;
+const MEDTRONIC_PDF_FETCH_DELAY_MS = 800;
+const MEDTRONIC_PDF_STATE_TTL_MS = 60000;
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.js');
+await ensureMedtronicPageBridge();
 
 const allLabelsResponse = await authenticatedFetch(`${API_URL}/episode/diagnoses_labels/Medtronic`);
 const diagnoses = await allLabelsResponse.json();
@@ -21,31 +26,270 @@ console.log("labels: ", diagnoses)
 const currentUrl = window.location.href;
 const transmissionId = currentUrl.split('/')[6];
 
-let interceptedPdfBlob = null;
+const medtronicPdfRequests = new Map();
+let lastPdfTrigger = { signature: "", timestamp: 0 };
+let activeOverlayBlobUrl = null;
 
-window.addEventListener("PASTEC_PDF_BLOB", async (event) => {
-    const { url, blob } = event.detail;
-    console.log("PDF Blob reçu:", url);
-    interceptedPdfBlob = blob;
-    
-    // Extract request ID from URL for processing
-    const requestIdMatch = url.match(/\/api\/documents\/(\d+)$/);
-    if (requestIdMatch) {
-        const requestId = requestIdMatch[1];
-        console.log("RequestId extracted from intercepted URL:", requestId);
-        
-        // Process the PDF immediately using the intercepted blob
-        await processPdfFromBlob(requestId, blob);
+function dispatchPopupSuppressionEvent(name, detail = {}) {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+function armMedtronicPopupSuppression() {
+    dispatchPopupSuppressionEvent("PASTEC_MEDTRONIC_SUPPRESS_POPUP", {
+        activeForMs: MEDTRONIC_POPUP_SUPPRESSION_MS
+    });
+}
+
+function clearMedtronicPopupSuppression() {
+    dispatchPopupSuppressionEvent("PASTEC_MEDTRONIC_CLEAR_POPUP_SUPPRESSION");
+}
+
+function hasRecentPdfTrigger() {
+    return (Date.now() - lastPdfTrigger.timestamp) < MEDTRONIC_POPUP_SUPPRESSION_MS;
+}
+
+function extractRequestIdFromUrl(url) {
+    if (typeof url !== "string") {
+        return null;
     }
+
+    return url.match(/\/api\/documents\/(\d+)$/)?.[1] || null;
+}
+
+function pruneMedtronicPdfRequests() {
+    const now = Date.now();
+
+    for (const [requestId, state] of medtronicPdfRequests.entries()) {
+        if (now - state.updatedAt > MEDTRONIC_PDF_STATE_TTL_MS) {
+            if (state.fallbackTimer) {
+                window.clearTimeout(state.fallbackTimer);
+            }
+            medtronicPdfRequests.delete(requestId);
+        }
+    }
+}
+
+function getOrCreatePdfRequestState(requestId) {
+    pruneMedtronicPdfRequests();
+
+    const existingState = medtronicPdfRequests.get(requestId);
+    if (existingState) {
+        return existingState;
+    }
+
+    const state = {
+        requestId,
+        token: null,
+        requestUrl: null,
+        documentOrigin: null,
+        clientId: null,
+        xDtpc: null,
+        isAssociatedClinicAccessingExpress: null,
+        blob: null,
+        started: false,
+        completed: false,
+        fallbackTimer: null,
+        updatedAt: Date.now()
+    };
+
+    medtronicPdfRequests.set(requestId, state);
+    return state;
+}
+
+function clearPdfFallbackTimer(state) {
+    if (!state?.fallbackTimer) {
+        return;
+    }
+
+    window.clearTimeout(state.fallbackTimer);
+    state.fallbackTimer = null;
+}
+
+function markPdfTrigger(target, source) {
+    const icon = target?.closest?.(MEDTRONIC_PDF_ICON_SELECTOR);
+    if (!icon) {
+        return;
+    }
+
+    const signature = icon.id || icon.getAttribute("src") || "medtronic-pdf-icon";
+    const now = Date.now();
+
+    if (lastPdfTrigger.signature === signature && (now - lastPdfTrigger.timestamp) < 400) {
+        return;
+    }
+
+    lastPdfTrigger = { signature, timestamp: now };
+    console.log("Medtronic PDF trigger detected", { source, signature });
+    armMedtronicPopupSuppression();
+
+    chrome.runtime.sendMessage({ action: "medtronic-pdf-click" }).catch((error) => {
+        console.error("Unable to notify background about Medtronic PDF click", error);
+    });
+}
+
+function installMedtronicPdfTriggerListener() {
+    document.addEventListener("pointerdown", (event) => {
+        markPdfTrigger(event.target, "pointerdown");
+    }, true);
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+            return;
+        }
+
+        markPdfTrigger(event.target, "keydown");
+    }, true);
+}
+
+function getImplantModelText() {
+    const implantModelElement = document.querySelector(".patient-card__detail-line.vt-patient-card-device-brand-name");
+    return implantModelElement?.textContent?.trim() || "UNKNOWN";
+}
+
+async function resolvePdfBlob(state) {
+    if (state.blob instanceof Blob && state.blob.size > 0) {
+        return state.blob;
+    }
+
+    if (!state.token) {
+        throw new Error(`No Medtronic bearer token available for request ${state.requestId}`);
+    }
+
+    console.log("Fetching Medtronic PDF directly from API", { requestId: state.requestId });
+    const fetchedBlob = await getPdfByRequestId(state);
+
+    if (!(fetchedBlob instanceof Blob) || fetchedBlob.size === 0) {
+        throw new Error(`Received an empty PDF blob for request ${state.requestId}`);
+    }
+
+    state.blob = fetchedBlob;
+    return fetchedBlob;
+}
+
+async function startPdfProcessing(state, source) {
+    if (!state || state.started || state.completed) {
+        return;
+    }
+
+    if (!hasRecentPdfTrigger()) {
+        console.log("Ignoring Medtronic PDF request without recent user trigger", {
+            requestId: state?.requestId,
+            source
+        });
+        return;
+    }
+
+    state.started = true;
+    state.updatedAt = Date.now();
+    clearPdfFallbackTimer(state);
+
+    try {
+        const pdfBlob = await resolvePdfBlob(state);
+        await processPdfFromBlob(state.requestId, pdfBlob);
+        state.completed = true;
+    } catch (error) {
+        state.started = false;
+        console.error("Failed to process Medtronic PDF request", { requestId: state.requestId, source, error });
+        showExtensionError(error, "Erreur lors du chargement du PDF");
+    } finally {
+        state.updatedAt = Date.now();
+    }
+}
+
+function schedulePdfFetchFallback(state) {
+    if (!state || state.fallbackTimer || state.started || state.completed || !state.token) {
+        return;
+    }
+
+    state.fallbackTimer = window.setTimeout(() => {
+        state.fallbackTimer = null;
+        void startPdfProcessing(state, "fallback fetch");
+    }, MEDTRONIC_PDF_FETCH_DELAY_MS);
+}
+
+function registerPdfBlob(requestId, blob) {
+    const state = getOrCreatePdfRequestState(requestId);
+    state.blob = blob;
+    state.updatedAt = Date.now();
+    console.log("Medtronic PDF blob registered", { requestId, size: blob?.size ?? 0 });
+    void startPdfProcessing(state, "intercepted blob");
+}
+
+async function hydratePdfStateWithBearerToken(state) {
+    if (state.token && state.documentOrigin) {
+        return state.token;
+    }
+
+    try {
+        const response = await chrome.runtime.sendMessage({ action: "get medtronic bearer token" });
+        if (response?.token || response?.documentOrigin) {
+            state.token = response?.token || state.token;
+            state.clientId = response?.clientId || state.clientId;
+            state.xDtpc = response?.xDtpc || state.xDtpc;
+            state.isAssociatedClinicAccessingExpress = response?.isAssociatedClinicAccessingExpress || state.isAssociatedClinicAccessingExpress;
+            state.documentOrigin = response?.documentOrigin || state.documentOrigin;
+            state.updatedAt = Date.now();
+        }
+    } catch (error) {
+        console.error("Unable to retrieve Medtronic bearer token from background", error);
+    }
+
+    return state.token;
+}
+
+window.addEventListener("PASTEC_PDF_BLOB", (event) => {
+    const { url, blob } = event.detail || {};
+    console.log("PDF Blob reçu:", url);
+
+    const requestId = extractRequestIdFromUrl(url);
+    if (!requestId || !(blob instanceof Blob)) {
+        return;
+    }
+
+    console.log("RequestId extracted from intercepted URL:", requestId);
+    registerPdfBlob(requestId, blob);
 });
 
+window.addEventListener("PASTEC_PDF_URL", (event) => {
+    const { url, source } = event.detail || {};
+    const requestId = extractRequestIdFromUrl(url);
+
+    if (!requestId) {
+        return;
+    }
+
+    console.log("Medtronic PDF URL observed", { requestId, source, url });
+    const state = getOrCreatePdfRequestState(requestId);
+    state.requestUrl = url;
+    try {
+        state.documentOrigin = new URL(url, window.location.origin).origin;
+    } catch (error) {
+        state.documentOrigin = state.documentOrigin || window.location.origin;
+    }
+    state.updatedAt = Date.now();
+
+    void hydratePdfStateWithBearerToken(state).then(() => {
+        if (state.token) {
+            void startPdfProcessing(state, `page bridge ${source || "url"}`);
+        }
+    });
+});
+
+installMedtronicPdfTriggerListener();
+
 async function processPdfFromBlob(requestId, pdfBlob) {
-    const implantModel = document.querySelector(".patient-card__detail-line.vt-patient-card-device-brand-name").textContent;
+    const implantModel = getImplantModelText();
     console.log(implantModel);
     console.log("Processing PDF from intercepted blob, requestId:", requestId);
     
     try {
+        if (!(pdfBlob instanceof Blob) || pdfBlob.size === 0) {
+            throw new Error(`Invalid Medtronic PDF blob for request ${requestId}`);
+        }
+
+        closePdfViewer();
         const blobUrl = URL.createObjectURL(pdfBlob);
+        activeOverlayBlobUrl = blobUrl;
         // Charger le PDF avec PDF.js en utilisant l'URL du blob
         const pdfDocument = await pdfjsLib.getDocument(blobUrl).promise
         console.log("PDF chargé avec succès", pdfDocument);
@@ -73,38 +317,73 @@ async function processPdfFromBlob(requestId, pdfBlob) {
         
     } catch(error) {
         console.error("Erreur lors du chargement du PDF avec PDF.js", error);
-        showExtensionError(error, "Erreur lors du chargement du PDF");
+        throw error;
     }
 }
 
-chrome.runtime.onMessage.addListener(async(message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message) => {
     if (message.type === "pdfUrl") {
         const requestId = message.requestId;
         console.log("pdfUrl message received, requestId:", requestId);
-        
-        // Check if we already have the intercepted blob for this request
-        if (interceptedPdfBlob) {
-            console.log("Using intercepted PDF blob");
-            await processPdfFromBlob(requestId, interceptedPdfBlob);
-            interceptedPdfBlob = null; // Clear after use
-        } else {
-            console.log("No intercepted blob available, falling back to fetch");
-            const bearer = message.token;
-            const pdfBlob = await getPdfByRequestId(requestId, bearer);
-            await processPdfFromBlob(requestId, pdfBlob);
+
+        const state = getOrCreatePdfRequestState(requestId);
+        state.token = message.token || state.token;
+        state.requestUrl = message.requestUrl || state.requestUrl;
+        state.clientId = message.clientId || state.clientId;
+        state.xDtpc = message.xDtpc || state.xDtpc;
+        state.isAssociatedClinicAccessingExpress = message.isAssociatedClinicAccessingExpress || state.isAssociatedClinicAccessingExpress;
+        state.documentOrigin = message.documentOrigin || state.documentOrigin || window.location.origin;
+        state.updatedAt = Date.now();
+
+        if (state.blob instanceof Blob && state.blob.size > 0) {
+            void startPdfProcessing(state, "background message with blob");
+            return;
         }
+
+        console.log("No intercepted blob available, scheduling direct fetch fallback");
+        schedulePdfFetchFallback(state);
     }
 });
 
-async function getPdfByRequestId (requestId, bearerToken) {
+async function getPdfByRequestId(state) {
     try {
-        const response = await fetch(`https://api-nl-prod.medtroniccarelink.net/CareLink.API.Service/api/documents/${requestId}`, {
+        if (!state?.token) {
+            throw new Error(`Missing bearer token for Medtronic PDF request ${state?.requestId}`);
+        }
+
+        const requestUrl = state.requestUrl
+            || new URL(`/CareLink.API.Service/api/documents/${state.requestId}`, state.documentOrigin || window.location.origin).href;
+
+        const headers = {
+            "Authorization": `Bearer ${state.token}`
+        };
+
+        if (state.clientId) {
+            headers["client-id"] = state.clientId;
+        }
+
+        if (state.xDtpc) {
+            headers["x-dtpc"] = state.xDtpc;
+        }
+
+        if (state.isAssociatedClinicAccessingExpress) {
+            headers["isassociatedclinicaccessingexpress"] = state.isAssociatedClinicAccessingExpress;
+        }
+
+        console.log("Fetching Medtronic PDF URL", {
+            requestId: state.requestId,
+            requestUrl,
+            documentOrigin: state.documentOrigin,
+            hasClientId: Boolean(state.clientId),
+            hasXDtpc: Boolean(state.xDtpc)
+        });
+
+        const response = await fetch(requestUrl, {
             method: "GET",
             cache: "no-cache",
             redirect: "follow",
-            headers: {
-                "Authorization": `Bearer ${bearerToken}`
-            }
+            credentials: "include",
+            headers
         });
         if(!response.ok) {
             throw new Error(`error encountered fetching the pdf file: ${response.status}`);
@@ -114,6 +393,7 @@ async function getPdfByRequestId (requestId, bearerToken) {
         }
     } catch(error) {
         console.error("error occured: ", error);
+        throw error;
     }
 }
 
@@ -437,6 +717,7 @@ async function processMedtronicPdf(metadata, blobUrl, choices, responseData) {
         }
         
         pdfViewer.style.display = "flex";
+        clearMedtronicPopupSuppression();
         console.log("✅ PDF viewer overlay displayed");
         
         // 3. Populate diagnostic buttons with episode-specific labels
@@ -667,6 +948,13 @@ function closePdfViewer() {
         containerToRemove.remove();
         console.log("PDF viewer removed from DOM");
     }
+
+    if (activeOverlayBlobUrl) {
+        URL.revokeObjectURL(activeOverlayBlobUrl);
+        activeOverlayBlobUrl = null;
+    }
+
+    clearMedtronicPopupSuppression();
 } 
 
 async function processEpisode(metadata, pdfBlob, blobUrl) {

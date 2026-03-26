@@ -2,25 +2,28 @@
     "manifest_version": 3,
     "name": "PASTEC Plugin",
     "description": "A simple plugin to download and annotate remote monitoring EGMs",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "permissions": [
-        "activeTab",
         "storage",
         "identity",
-        "tabs",
+        "scripting",
         "webRequest",
         "cookies"
       ],
     "host_permissions": [
       "https://pastec.ihu-liryc.fr/*",
-      "http://localhost:8000/*",
-      "http://localhost:8080/*",
       "https://www.microport-smartview.com/*",
       "https://www.merlin.net/*",
+      "https://europe.merlin.net/*",
+      "https://p1euapim.merlin.net/*",
       "https://www.biotronik-homemonitoring.com/*",
       "https://www.latitudenxt.bostonscientific-international.com/*",
       "https://world.medtroniccarelink.net/*",
       "https://api-nl-prod.medtroniccarelink.net/*"
+    ],
+    "optional_host_permissions": [
+      "http://localhost:8000/*",
+      "http://localhost:8080/*"
     ],
     "background": {
       "service_worker": "background.js",
@@ -37,6 +40,12 @@
         "matches": ["https://www.merlin.net/group/merlin-ep_b/transmission-details*"],
         "js": ["abbott_scraping.js", "content.js"],
         "css": ["css/overlay-container.css"],
+        "run_at": "document_start"
+      },
+      {
+        "matches": ["https://europe.merlin.net/merlin-cloud/*episodesAndEGM*"],
+        "js": ["abbott_scraping.js", "content.js"],
+        "css": ["css/pdf-viewer.css"],
         "run_at": "document_start"
       },
       {
@@ -62,8 +71,15 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["pdf.worker.js", "html/overlay-container.html", "html/pdf-viewer.html", "html/popup.js", "diagnosis-maps.json", "fonts/*"],
-      "matches": ["<all_urls>"]
+      "resources": ["pdf.worker.js", "medtronic_page_bridge.js", "diagnosis-maps.json", "html/overlay-container.html", "html/pdf-viewer.html"],
+      "matches": [
+        "https://www.microport-smartview.com/*",
+        "https://www.merlin.net/*",
+        "https://europe.merlin.net/*",
+        "https://www.biotronik-homemonitoring.com/*",
+        "https://www.latitudenxt.bostonscientific-international.com/*",
+        "https://world.medtroniccarelink.net/*"
+      ]
     }
   ],
   "action": {

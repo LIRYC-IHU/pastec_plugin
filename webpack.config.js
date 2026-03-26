@@ -10,6 +10,7 @@ module.exports = {
   entry: {
     content: './src/content.js',
     intercept_fetch: './src/intercept-fetch.js',
+    medtronic_page_bridge: './src/medtronic_page_bridge.js',
     data_formatting: './src/data_formatting.js',
     auth: './src/auth.js',
     microport_scraping: './src/microport_scraping.js',

@@ -1,9 +1,44 @@
 console.log("options script initialized");
 
 const button = document.querySelector("#submit-button");
+const OPTIONAL_API_ORIGINS = new Set([
+    "http://localhost:8000/*",
+    "http://localhost:8080/*",
+]);
 
 function normalizeUrl(value) {
     return value.trim().replace(/\/+$/, "");
+}
+
+function getOriginPermissionPattern(value) {
+    const normalizedValue = normalizeUrl(value);
+    if (!normalizedValue) {
+        return null;
+    }
+
+    try {
+        return `${new URL(normalizedValue).origin}/*`;
+    } catch (error) {
+        return null;
+    }
+}
+
+async function ensureOptionalApiHostPermission(value) {
+    const originPattern = getOriginPermissionPattern(value);
+    if (!originPattern || !OPTIONAL_API_ORIGINS.has(originPattern)) {
+        return;
+    }
+
+    const permissions = { origins: [originPattern] };
+    const alreadyGranted = await chrome.permissions.contains(permissions);
+    if (alreadyGranted) {
+        return;
+    }
+
+    const granted = await chrome.permissions.request(permissions);
+    if (!granted) {
+        throw new Error("L'autorisation d'acces au serveur local a ete refusee.");
+    }
 }
 
 function setAuthStatus(message) {
@@ -196,6 +231,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
 
             try {
+                await ensureOptionalApiHostPermission(urlField.value.trim());
                 const payload = await handleProvisioningFile(file, urlField.value.trim());
                 await applyProvisioningPayload(payload, urlField.value.trim());
                 setAuthStatus("Configuration centre importée avec succes");
@@ -226,6 +262,7 @@ if (button) {
         const apiUrl = normalizeUrl(urlField.value);
         console.log("Attempting authentication with Keycloak");
         try {
+            await ensureOptionalApiHostPermission(apiUrl);
             const response = await sendRuntimeMessage({
                 action: "pastec-auth-login",
                 apiUrl,
